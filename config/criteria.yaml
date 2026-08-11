@@ -1,0 +1,394 @@
+evaluation:
+  version: "1"
+  description: Criteria for assessing external briefs for the Masterskaya student project format.
+  project_types:
+    - key: development
+      title: Development
+      description: Software, web, mobile, backend, API, automation or integration project.
+      task_types:
+        - product_build
+        - prototype
+      aliases:
+        - разработка
+        - web
+        - mobile
+        - backend
+        - api
+    - key: design
+      title: Design
+      description: Interface, service, product, brand or visual communication design project.
+      task_types:
+        - prototype
+        - research
+      aliases:
+        - дизайн
+        - ux
+        - ui
+        - brand
+    - key: analytics
+      title: Analytics
+      description: Research, data analysis, dashboard, market analysis or product analytics project.
+      task_types:
+        - research
+        - dashboard
+      aliases:
+        - аналитика
+        - bi
+        - research
+    - key: marketing
+      title: Marketing
+      description: Marketing, communications, content, positioning or promotion project.
+      task_types:
+        - research
+        - content
+      aliases:
+        - маркетинг
+        - smm
+        - promotion
+    - key: ai
+      title: AI
+      description: Applied machine learning, LLM, computer vision, NLP or automation with AI.
+      task_types:
+        - prototype
+        - research
+      aliases:
+        - ии
+        - ai
+        - ml
+        - llm
+    - key: education
+      title: Education
+      description: Educational product, course, learning materials or methodology project.
+      task_types:
+        - content
+        - prototype
+      aliases:
+        - образование
+        - edtech
+    - key: mixed
+      title: Mixed
+      description: Multidisciplinary project involving several directions.
+      task_types:
+        - prototype
+        - research
+      aliases:
+        - смешанный проект
+        - комплексный проект
+  task_types:
+    - key: product_build
+      title: Product build
+      description: Build a usable digital product or product module.
+      complexity: medium
+      criteria:
+        - goal_clarity
+        - mvp_feasibility
+        - student_fit
+    - key: prototype
+      title: Prototype
+      description: Prepare a working prototype or concept that validates the idea.
+      complexity: medium
+      criteria:
+        - goal_clarity
+        - result_clarity
+        - mvp_feasibility
+    - key: research
+      title: Research
+      description: Analyze a domain, data, users or market and produce conclusions.
+      complexity: low
+      criteria:
+        - goal_clarity
+        - material_readiness
+        - result_clarity
+    - key: dashboard
+      title: Dashboard
+      description: Analyze data and produce a dashboard or analytical report.
+      complexity: medium
+      criteria:
+        - material_readiness
+        - result_clarity
+        - mvp_feasibility
+    - key: content
+      title: Content
+      description: Produce educational, marketing or communication materials.
+      complexity: low
+      criteria:
+        - goal_clarity
+        - material_readiness
+        - student_fit
+  criteria:
+    - key: goal_clarity
+      title: Goal clarity
+      description: The brief explains the purpose of the project and the problem to solve.
+      complexity: low
+      allowed_values:
+        - met
+        - not_met
+        - insufficient_information
+      decision_thresholds:
+        min_score: 0
+        max_score: 0
+        conditions:
+          - goal is absent or vague
+        description: Missing goal usually requires clarification.
+      status_signals:
+        - unclear_goal
+        - absent_goal
+    - key: result_clarity
+      title: Expected result clarity
+      description: The customer states what concrete output should be delivered.
+      complexity: low
+      allowed_values:
+        - met
+        - not_met
+        - insufficient_information
+      decision_thresholds:
+        min_score: 0
+        max_score: 0
+        conditions:
+          - final product is absent
+        description: Missing expected result blocks reliable assessment.
+      status_signals:
+        - unclear_result
+        - absent_result
+    - key: material_readiness
+      title: Material readiness
+      description: The brief names available data, content, API, mockups, links or source materials.
+      complexity: medium
+      allowed_values:
+        - met
+        - not_met
+        - insufficient_information
+      decision_thresholds:
+        min_score: 0
+        max_score: 0
+        conditions:
+          - materials or access are unclear
+        description: Missing materials often require questions before launch.
+      status_signals:
+        - missing_data
+        - missing_api_access
+        - missing_content
+    - key: mvp_feasibility
+      title: MVP feasibility
+      description: The scope can be reduced to a realistic student MVP.
+      complexity: high
+      allowed_values:
+        - met
+        - not_met
+        - insufficient_information
+        - risk_detected
+      decision_thresholds:
+        min_score: 0
+        max_score: 0
+        conditions:
+          - scope is too broad
+        description: A broad scope should lead to SIMPLIFY unless risks are critical.
+      status_signals:
+        - broad_scope
+        - unclear_mvp
+        - too_many_features
+    - key: student_fit
+      title: Student project fit
+      description: The project can be done by students without production-grade guarantees or unsafe obligations.
+      complexity: high
+      allowed_values:
+        - met
+        - not_met
+        - insufficient_information
+        - risk_detected
+      decision_thresholds:
+        min_score: 0
+        max_score: 0
+        conditions:
+          - production responsibility is too high
+        description: Critical operational or legal responsibility may make the project unsuitable.
+      status_signals:
+        - production_critical
+        - legal_risk
+        - unsafe_domain
+  required_fields:
+    - key: project_goal
+      field_path: project_goal
+      title: Project goal
+      description: The purpose or problem the project should solve.
+      required: true
+      allowed_values:
+        - explicit
+    - key: expected_result
+      field_path: expected_result
+      title: Expected result
+      description: The product, artefact or measurable output expected by the customer.
+      required: true
+      allowed_values:
+        - explicit
+    - key: tasks
+      field_path: tasks
+      title: Key tasks
+      description: The main tasks that students are expected to complete.
+      required: true
+      allowed_values:
+        - explicit
+    - key: project_direction
+      field_path: project_direction
+      title: Project direction
+      description: One of development, design, analytics, marketing, ai, education or mixed.
+      required: true
+      allowed_values:
+        - development
+        - design
+        - analytics
+        - marketing
+        - ai
+        - education
+        - mixed
+    - key: materials
+      field_path: materials
+      title: Available materials
+      description: Existing data, mockups, API, content, links or source assets.
+      required: false
+      allowed_values:
+        - explicit
+    - key: deadlines
+      field_path: deadlines
+      title: Deadlines
+      description: Deadline or timing constraints if they exist.
+      required: false
+      allowed_values:
+        - explicit
+    - key: integrations
+      field_path: integrations
+      title: Integrations
+      description: External systems or APIs required by the project if they exist.
+      required: false
+      allowed_values:
+        - explicit
+  decision_thresholds:
+    - min_score: 0
+      max_score: 0
+      conditions:
+        - final decision is computed by arbitration rules
+      description: LLM assessment is advisory; deterministic arbiter returns final status.
+  risk_analysis:
+    version: "1"
+    description: Risk taxonomy for Masterskaya student projects.
+    risk_types:
+      - key: missing_materials
+        title: Missing materials or access
+        description: Required data, content, mockups, API access or links are absent or uncertain.
+        severity_hint: medium
+        signals:
+          - missing_data
+          - missing_api_access
+          - missing_content
+        evidence_hints:
+          - no data described
+          - access not confirmed
+      - key: scope_too_large
+        title: Scope too large
+        description: The brief asks for too many functions or an industrial-scale product.
+        severity_hint: high
+        signals:
+          - broad_scope
+          - too_many_features
+          - unclear_mvp
+        evidence_hints:
+          - many modules
+          - full platform
+      - key: mentor_expertise_required
+        title: Mentor expertise required
+        description: The project needs domain, technical, legal or methodological review before launch.
+        severity_hint: medium
+        signals:
+          - complex_domain
+          - specialized_expertise
+          - legal_risk
+        evidence_hints:
+          - regulated domain
+          - unclear technical feasibility
+      - key: production_criticality
+        title: Production criticality
+        description: The customer expects production-grade reliability, security or operational responsibility.
+        severity_hint: critical
+        signals:
+          - production_critical
+          - sensitive_data
+          - uptime_required
+        evidence_hints:
+          - real users depend on system
+          - personal data
+          - critical operations
+    decision_thresholds:
+      - min_score: 0
+        max_score: 0
+        conditions:
+          - critical risks should reject or escalate
+        description: Final status is selected by arbitration.
+  arbitration:
+    version: "1"
+    description: Deterministic rules for final brief recommendation.
+    default_status: MENTOR_REVIEW
+    rules:
+      - key: reject_critical_risk
+        title: Reject critical risk
+        description: Reject when a critical student-project risk is present.
+        status: REJECT
+        confidence: 1.0
+        conditions:
+          - field: risk.max_severity
+            operator: in
+            value:
+              - critical
+      - key: simplify_high_risk
+        title: Simplify high scope risk
+        description: Simplify when the project has high scope or feasibility risk.
+        status: SIMPLIFY
+        confidence: 0.9
+        conditions:
+          - field: risk.max_severity
+            operator: in
+            value:
+              - high
+      - key: clarify_missing_information
+        title: Clarify missing information
+        description: Ask for clarification when required information is missing.
+        status: CLARIFY
+        confidence: 0.85
+        conditions:
+          - field: completeness.missing_count
+            operator: gt
+            value: 0
+      - key: mentor_review_insufficient_information
+        title: Mentor review for uncertainty
+        description: Escalate when criteria remain uncertain despite complete extracted fields.
+        status: MENTOR_REVIEW
+        confidence: 0.8
+        conditions:
+          - field: evaluation.insufficient_information_count
+            operator: gt
+            value: 0
+          - field: completeness.missing_count
+            operator: eq
+            value: 0
+      - key: accept_ready
+        title: Accept ready brief
+        description: Accept when the brief is complete, criteria are met and no relevant risks remain.
+        status: ACCEPT
+        confidence: 0.95
+        conditions:
+          - field: completeness.is_complete
+            operator: eq
+            value: true
+          - field: risk.max_severity
+            operator: in
+            value:
+              - none
+              - low
+          - field: evaluation.not_met_count
+            operator: eq
+            value: 0
+          - field: evaluation.insufficient_information_count
+            operator: eq
+            value: 0
+          - field: evaluation.risk_detected_count
+            operator: eq
+            value: 0

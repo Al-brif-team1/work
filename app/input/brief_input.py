@@ -1,0 +1,120 @@
+"""Brief input loading and normalization utilities."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+from app.schemas import BriefInput, BriefInputMetadata
+
+_ZERO_WIDTH_CHARS = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
+_MULTIPLE_SPACES = re.compile(r"[ \t]{2,}")
+_WRAPPER_MARKERS = {
+    "<<< BEGIN OF TEXT >>>",
+    "<<< END OF TEXT >>>",
+    "<<< BEGIN OF CONVERSATION >>>",
+    "<<< END OF CONVERSATION >>>",
+    "<<< BEGIN OF FILE >>>",
+    "<<< END OF FILE >>>",
+}
+
+
+class BriefInputError(RuntimeError):
+    """Raised when a brief input cannot be loaded or normalized."""
+
+
+class BriefInputNormalizer:
+    """Normalize brief text without removing potentially meaningful content."""
+
+    def normalize(self, text: str) -> str:
+        """Normalize whitespace and remove obvious transport artefacts."""
+        if text is None or not text.strip():
+            raise BriefInputError("Brief text must not be empty")
+
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+        normalized = normalized.replace("\x00", "")
+        normalized = _ZERO_WIDTH_CHARS.sub("", normalized)
+
+        lines = []
+        previous_blank = False
+        for raw_line in normalized.split("\n"):
+            line = raw_line.rstrip()
+            if line.strip() in _WRAPPER_MARKERS:
+                continue
+
+            if not line.strip():
+                if previous_blank:
+                    continue
+                lines.append("")
+                previous_blank = True
+                continue
+
+            previous_blank = False
+            leading = re.match(r"^\s*", line).group(0)
+            content = line[len(leading) :]
+            content = _MULTIPLE_SPACES.sub(" ", content)
+            lines.append(f"{leading}{content}")
+
+        while lines and not lines[0].strip():
+            lines.pop(0)
+        while lines and not lines[-1].strip():
+            lines.pop()
+
+        result = "\n".join(lines)
+        if not result.strip():
+            raise BriefInputError("Brief text is empty after normalization")
+
+        return result
+
+
+class BriefInputFactory:
+    """Create validated brief input models from text or files."""
+
+    def __init__(self, normalizer: BriefInputNormalizer | None = None) -> None:
+        """Initialize the factory with an optional normalizer."""
+        self._normalizer = normalizer or BriefInputNormalizer()
+
+    def from_text(
+        self,
+        text: str,
+        metadata: BriefInputMetadata | None = None,
+    ) -> BriefInput:
+        """Build a brief input model from inline text."""
+        original_text = self._ensure_text(text)
+        normalized_text = self._normalizer.normalize(original_text)
+        return BriefInput(
+            original_text=original_text,
+            normalized_text=normalized_text,
+            metadata=metadata or BriefInputMetadata(),
+        )
+
+    def from_file(
+        self,
+        file_path: str | Path,
+        metadata: BriefInputMetadata | None = None,
+    ) -> BriefInput:
+        """Build a brief input model from a file on disk."""
+        path = Path(file_path)
+        try:
+            original_text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise BriefInputError(f"Unable to read brief file: {path}") from exc
+
+        input_metadata = metadata or BriefInputMetadata()
+        input_metadata = input_metadata.model_copy(
+            update={
+                "source": "file",
+                "input_type": "file",
+                "file_path": str(path),
+                "file_name": path.name,
+            }
+        )
+        return self.from_text(original_text, metadata=input_metadata)
+
+    @staticmethod
+    def _ensure_text(text: str) -> str:
+        """Reject blank user input before normalization."""
+        if text is None or not text.strip():
+            raise BriefInputError("Brief text must not be empty")
+
+        return text

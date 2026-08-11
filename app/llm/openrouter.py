@@ -1,0 +1,76 @@
+import json
+from collections.abc import Iterable, Sequence
+from typing import Any
+
+from openai import OpenAI
+
+from app.config import Settings
+from app.llm.client import LLMClient, Message
+
+
+class OpenRouterLLMClient(LLMClient):
+    """OpenRouter implementation backed by the official OpenAI SDK."""
+
+    def __init__(self, settings: Settings) -> None:
+        """Create a client configured for the OpenRouter OpenAI-compatible API."""
+        self._model = settings.openrouter_model
+        self._client = OpenAI(
+            api_key=settings.openrouter_api_key,
+            base_url="https://openrouter.ai/api/v1",
+        )
+
+    def generate(
+        self,
+        messages: Sequence[Message],
+        **kwargs: Any,
+    ) -> str:
+        """Return the first response message content as text."""
+        response = self._client.chat.completions.create(
+            model=self._model,
+            messages=list(messages),
+            **kwargs,
+        )
+
+        content = response.choices[0].message.content
+        return content or ""
+
+    def generate_json(
+        self,
+        messages: Sequence[Message],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Request a JSON object response and decode it into a dictionary."""
+        response_format = kwargs.pop("response_format", {"type": "json_object"})
+        response_text = self.generate(
+            messages=messages,
+            response_format=response_format,
+            **kwargs,
+        )
+
+        try:
+            parsed = json.loads(response_text)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("LLM response is not valid JSON") from exc
+
+        if not isinstance(parsed, dict):
+            raise RuntimeError("LLM JSON response must be an object")
+
+        return parsed
+
+    def stream(
+        self,
+        messages: Sequence[Message],
+        **kwargs: Any,
+    ) -> Iterable[str]:
+        """Yield non-empty content deltas from a streaming response."""
+        stream = self._client.chat.completions.create(
+            model=self._model,
+            messages=list(messages),
+            stream=True,
+            **kwargs,
+        )
+
+        for chunk in stream:
+            content = chunk.choices[0].delta.content
+            if content:
+                yield content
