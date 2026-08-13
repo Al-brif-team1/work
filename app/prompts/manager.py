@@ -1,4 +1,4 @@
-"""Centralized prompt loading and caching."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -14,20 +14,20 @@ _TEMPLATE_VARIABLE_RE = re.compile(r"{{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}")
 
 
 class PromptManagerError(RuntimeError):
-    """Base error raised by prompt loading infrastructure."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class PromptNotFoundError(PromptManagerError):
-    """Raised when a requested prompt cannot be found."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class PromptRenderError(PromptManagerError):
-    """Raised when a prompt cannot be rendered with supplied variables."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 @dataclass(frozen=True)
 class Prompt:
-    """Loaded prompt template with source metadata."""
+    """Класс «Prompt» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     name: str
     content: str
@@ -37,7 +37,7 @@ class Prompt:
 
 
 class RenderedPrompt(BaseModel):
-    """Rendered prompt with separated system/user messages and metadata."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     name: str
     version: str | None = None
@@ -49,7 +49,7 @@ class RenderedPrompt(BaseModel):
 
 
 class PromptManager:
-    """Load prompt templates by name from one or more directories."""
+    """Класс «PromptManager» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     DEFAULT_EXTENSION = ".md"
 
@@ -57,18 +57,18 @@ class PromptManager:
         self,
         prompt_directories: list[str | Path] | tuple[str | Path, ...] | None = None,
     ) -> None:
-        """Create a manager with ordered prompt search directories."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         directories = prompt_directories or (self.default_prompt_directory(),)
         self._prompt_directories = tuple(Path(directory) for directory in directories)
         self._cache: dict[tuple[str, str | None], Prompt] = {}
 
     @property
     def prompt_directories(self) -> tuple[Path, ...]:
-        """Return the ordered prompt search directories."""
+        """Выполняет шаг «prompt directories». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._prompt_directories
 
     def load(self, name: str, version: str | None = None) -> Prompt:
-        """Load a prompt by name and optional version."""
+        """Выполняет шаг «load». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         normalized_name = self._normalize_name(name)
         normalized_version = self._normalize_version(version)
         cache_key = (normalized_name, normalized_version)
@@ -98,7 +98,7 @@ class PromptManager:
         variables: dict[str, Any] | None = None,
         version: str | None = None,
     ) -> RenderedPrompt:
-        """Load and render a prompt with strict template-variable validation."""
+        """Выполняет шаг «render». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         prompt = self.load(name, version=version)
         metadata, body = self._extract_front_matter(prompt.content)
         effective_metadata = {
@@ -134,7 +134,7 @@ class PromptManager:
         )
 
     def clear_cache(self) -> None:
-        """Clear all cached prompt templates."""
+        """Выполняет шаг «clear cache». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         self._cache.clear()
 
     def _resolve_prompt_path(
@@ -142,7 +142,7 @@ class PromptManager:
         name: str,
         version: str | None,
     ) -> Path:
-        """Find the first matching prompt path in configured directories."""
+        """Находит нужное поле внутри вложенной структуры данных. Это похоже на движение по адресу: шаг за шагом до конкретного значения."""
         candidates = self._candidate_names(name, version)
         searched_paths: list[Path] = []
 
@@ -161,7 +161,7 @@ class PromptManager:
 
     @classmethod
     def _candidate_names(cls, name: str, version: str | None) -> tuple[str, ...]:
-        """Build filename candidates for plain and versioned prompts."""
+        """Выполняет шаг «candidate names». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         path = Path(name)
         suffix = path.suffix or cls.DEFAULT_EXTENSION
         stem = path.name[: -len(path.suffix)] if path.suffix else path.name
@@ -178,7 +178,7 @@ class PromptManager:
 
     @classmethod
     def _extract_front_matter(cls, content: str) -> tuple[dict[str, Any], str]:
-        """Extract a minimal YAML front matter block from prompt content."""
+        """Выполняет шаг «extract front matter». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         normalized = content.lstrip()
         if not normalized.startswith("---"):
             return {}, content
@@ -204,7 +204,7 @@ class PromptManager:
 
     @staticmethod
     def _parse_front_matter(lines: list[str]) -> dict[str, Any]:
-        """Parse the simple key-value YAML subset used by prompt metadata."""
+        """Разбирает текстовое значение и превращает его в программный объект. Так код дальше работает не с произвольной строкой, а с понятной структурой."""
         metadata: dict[str, Any] = {}
         for raw_line in lines:
             line = raw_line.strip()
@@ -222,7 +222,7 @@ class PromptManager:
 
     @staticmethod
     def _split_prompt_sections(content: str) -> tuple[str, str | None]:
-        """Split prompt body into system and optional user sections."""
+        """Выполняет шаг «split prompt sections». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         lines = content.splitlines()
         system_start: int | None = None
         user_start: int | None = None
@@ -252,7 +252,7 @@ class PromptManager:
         *,
         prompt_name: str,
     ) -> str:
-        """Render ``{{variable}}`` placeholders and reject missing values."""
+        """Готовит человекочитаемый текст из внутренних данных. Это нужно для промптов, объяснений или финального ответа."""
         expected = set(cls._template_variables(template))
         missing = sorted(name for name in expected if name not in variables)
         if missing:
@@ -268,12 +268,12 @@ class PromptManager:
 
     @staticmethod
     def _template_variables(template: str) -> list[str]:
-        """Return template variable names from ``{{variable}}`` placeholders."""
+        """Выполняет шаг «template variables». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return [match.group(1).strip() for match in _TEMPLATE_VARIABLE_RE.finditer(template)]
 
     @staticmethod
     def _normalize_name(name: str) -> str:
-        """Normalize and validate a prompt name."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         normalized = name.strip()
         if not normalized:
             raise ValueError("prompt name must not be empty")
@@ -284,7 +284,7 @@ class PromptManager:
 
     @staticmethod
     def _normalize_version(version: str | None) -> str | None:
-        """Normalize an optional prompt version identifier."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         if version is None:
             return None
         normalized = version.strip()
@@ -296,7 +296,7 @@ class PromptManager:
 
     @staticmethod
     def default_prompt_directory() -> Path:
-        """Return the project default prompt directory."""
+        """Выполняет шаг «default prompt directory». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return Path(__file__).resolve().parents[2] / "prompts"
 
 
@@ -304,19 +304,19 @@ class PromptManager:
 def get_prompt_manager(
     prompt_directories: tuple[str | Path, ...] | None = None,
 ) -> PromptManager:
-    """Return a shared prompt manager for reusable stage instances."""
+    """Возвращает уже подготовленный объект или настройку, чтобы остальные части проекта использовали единый источник."""
     directories = prompt_directories or (PromptManager.default_prompt_directory(),)
     normalized_directories = tuple(Path(directory) for directory in directories)
     return PromptManager(normalized_directories)
 
 
 def clear_prompt_manager_cache() -> None:
-    """Clear cached prompt managers and their loaded prompt templates."""
+    """Выполняет шаг «clear prompt manager cache». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     get_prompt_manager.cache_clear()
 
 
 def _parse_metadata_scalar(value: str) -> Any:
-    """Parse a small YAML-like scalar subset for prompt front matter."""
+    """Разбирает текстовое значение и превращает его в программный объект. Так код дальше работает не с произвольной строкой, а с понятной структурой."""
     if value == "":
         return None
     if value in {"null", "Null", "NULL", "~"}:
@@ -336,7 +336,7 @@ def _parse_metadata_scalar(value: str) -> Any:
 
 
 def _stringify_variable(value: Any) -> str:
-    """Render a template variable as prompt-safe text."""
+    """Выполняет шаг «stringify variable». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     if isinstance(value, str):
         return value
     if isinstance(value, BaseModel):

@@ -1,4 +1,4 @@
-"""Tests for the final self-check stage."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from app.schemas import (
 
 
 class RecordingTraceContext:
-    """Simple trace/span context used by unit tests."""
+    """Класс «RecordingTraceContext» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.updates: list[dict[str, Any]] = []
@@ -47,7 +47,7 @@ class RecordingTraceContext:
 
 
 class RecordingTracingClient:
-    """Tracing double that records trace and span updates."""
+    """Класс «RecordingTracingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.trace = RecordingTraceContext()
@@ -70,7 +70,7 @@ class RecordingTracingClient:
 
 
 class FakeLLMClient:
-    """Deterministic LLM client used for self-check unit tests."""
+    """Класс «FakeLLMClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, responses: list[dict[str, Any] | Exception]) -> None:
         self._responses = responses
@@ -92,14 +92,14 @@ class FakeLLMClient:
 
 
 def make_brief_input() -> BriefInput:
-    """Create a brief input for tests."""
+    """Выполняет шаг «make brief input». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return BriefInputFactory().from_text(
         "Build a customer portal for reporting and account access."
     )
 
 
 def make_extracted_brief() -> ExtractedBrief:
-    """Create a minimal extracted brief for tests."""
+    """Выполняет шаг «make extracted brief». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return ExtractedBrief(
         project_goal=ExtractedFact(
             status=FactStatus.explicit,
@@ -142,7 +142,7 @@ def make_extracted_brief() -> ExtractedBrief:
 
 
 def make_completeness_result() -> CompletenessResult:
-    """Create a complete completeness result for tests."""
+    """Выполняет шаг «make completeness result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     present_item = CompletenessItem(
         field_key="project_goal",
         field_path="project_goal",
@@ -162,7 +162,7 @@ def make_completeness_result() -> CompletenessResult:
 
 
 def make_assessment_result() -> AssessmentResult:
-    """Create a unified assessment result with traceable self-check inputs."""
+    """Выполняет шаг «make assessment result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return AssessmentResult(
         criterion_evaluations=[
             CriterionEvaluation(
@@ -208,7 +208,7 @@ def make_assessment_result() -> AssessmentResult:
 
 
 def make_empty_assessment_result() -> AssessmentResult:
-    """Create assessment output equivalent to the old empty self-check fixtures."""
+    """Выполняет шаг «make empty assessment result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return AssessmentResult(
         criterion_evaluations=[],
         risks=[],
@@ -235,7 +235,7 @@ def make_empty_assessment_result() -> AssessmentResult:
 
 
 def make_arbitration_result(status: DecisionStatus) -> ArbitrationResult:
-    """Create an arbitration result for tests."""
+    """Выполняет шаг «make arbitration result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return ArbitrationResult(
         final_status=status,
         reasons=["Synthetic decision."],
@@ -251,7 +251,7 @@ def make_context(
     response_text: str,
     response_payload: dict[str, Any] | None = None,
 ) -> SelfCheckContext:
-    """Create a self-check context for tests."""
+    """Выполняет шаг «make context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return SelfCheckContext(
         response_text=response_text,
         response_payload=response_payload,
@@ -267,7 +267,7 @@ def make_context(
 
 
 def make_llm_payload() -> dict[str, Any]:
-    """Return a valid LLM self-check payload."""
+    """Выполняет шаг «make llm payload». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return {
         "is_valid": True,
         "issues": [],
@@ -277,7 +277,7 @@ def make_llm_payload() -> dict[str, Any]:
 
 
 class TestDeterministicValidator(unittest.TestCase):
-    """Unit tests for deterministic self-check validation."""
+    """Класс «TestDeterministicValidator» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_detects_status_mismatch(self) -> None:
         validator = DeterministicValidator()
@@ -370,7 +370,7 @@ class TestDeterministicValidator(unittest.TestCase):
 
 
 class TestLLMSelfChecker(unittest.TestCase):
-    """Unit tests for the LLM-based self-check."""
+    """Класс «TestLLMSelfChecker» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_runs_llm_only_after_deterministic_validation_passes(self) -> None:
         llm_client = FakeLLMClient([make_llm_payload()])
@@ -436,7 +436,7 @@ class TestLLMSelfChecker(unittest.TestCase):
 
 
 class TestSelfChecker(unittest.TestCase):
-    """Unit tests for the orchestrator."""
+    """Класс «TestSelfChecker» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_orchestrator_skips_llm_on_deterministic_failure(self) -> None:
         llm_client = FakeLLMClient([make_llm_payload()])

@@ -1,4 +1,4 @@
-"""Pipeline orchestration package."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from app.pipeline.assessment import (
     AssessmentConfigError,

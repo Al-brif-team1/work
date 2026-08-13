@@ -1,4 +1,4 @@
-"""Security primitives and pipeline exports."""
+"""Модуль защитной обработки входного текста. Он помогает не пропускать опасные инструкции и лишние персональные данные в конвейер."""
 
 from app.security.injection_detector import InjectionDetector, InjectionResult
 from app.security.pii_sanitizer import PIISanitizer

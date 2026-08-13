@@ -1,4 +1,4 @@
-"""MVP planning for briefs that require simplification."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -28,11 +28,11 @@ if TYPE_CHECKING:
 
 
 class MVPPlannerError(RuntimeError):
-    """Raised when the MVP planner cannot produce a valid plan."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class MVPPlannerStage(BaseLLMStage):
-    """Generate a simplified MVP plan when the brief needs simplification."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Архитектор-техлид. Он через ИИ упрощает проект до MVP только тогда, когда это действительно нужно. Этот этап обращается к LLM, поэтому внутри работает ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseLLMStage, поэтому он умеет работать в нашем конвейере."""
 
     def __init__(
         self,
@@ -46,7 +46,7 @@ class MVPPlannerStage(BaseLLMStage):
         model_name: str | None = None,
         llm_runner: LLMRunner | None = None,
     ) -> None:
-        """Initialize the planner with its dependencies and prompt."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         super().__init__(
             llm_client=llm_client,
             tracing_client=tracing_client,
@@ -66,7 +66,7 @@ class MVPPlannerStage(BaseLLMStage):
         assessment_result: AssessmentResult,
         arbitration_result: ArbitrationResult,
     ) -> MVPPlanningResult:
-        """Produce an MVP plan from unified Assessment output."""
+        """Выполняет шаг «plan assessment». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if arbitration_result.final_status != DecisionStatus.simplify:
             return MVPPlanningResult(
                 plan=None,
@@ -98,7 +98,7 @@ class MVPPlannerStage(BaseLLMStage):
         )
 
     def plan_context(self, context: AIContext) -> AIContext:
-        """Return context enriched with MVP planning output."""
+        """Выполняет шаг «plan context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if context.extracted_brief is None:
             raise MVPPlannerError("MVP planning requires extracted_brief in AIContext")
         if context.arbitration_result is None:
@@ -118,11 +118,11 @@ class MVPPlannerStage(BaseLLMStage):
         return context.with_mvp_planning_result(result)
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Run this stage using the common AIContext pipeline contract."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return self.plan_context(context)
 
     def _validate_plan(self, plan: MVPPlan) -> None:
-        """Validate that the plan is complete enough for an MVP proposal."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if not plan.keep:
             raise ValueError("keep must not be empty")
         if not plan.simplify:
@@ -140,7 +140,7 @@ class MVPPlannerStage(BaseLLMStage):
         evaluation_result: dict,
         arbitration_result: ArbitrationResult,
     ) -> str:
-        """Serialize the structured MVP planning context."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return json.dumps(
             {
                 "brief_input": brief_input.model_dump(mode="json"),
@@ -161,7 +161,7 @@ class MVPPlannerStage(BaseLLMStage):
         evaluation_result: dict,
         arbitration_result: ArbitrationResult,
     ):
-        """Render MVP planner messages through PromptManager."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         rendered = self._render_prompt(
             {
                 "planning_context": self._build_user_prompt(
@@ -189,7 +189,7 @@ class MVPPlannerStage(BaseLLMStage):
         risk_count: int,
         criterion_count: int,
     ) -> MVPPlanningResult:
-        """Run the LLM planner with prompt-compatible assessment sections."""
+        """Выполняет шаг «run plan». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         run_result = self._execute_structured_stage(
             trace_name="mvp_planner.brief",
             span_name="mvp_planner.llm",
@@ -225,7 +225,7 @@ class MVPPlannerStage(BaseLLMStage):
 
     @staticmethod
     def _risk_analysis_prompt_section(assessment_result: AssessmentResult) -> dict:
-        """Build the legacy-shaped risk section without using legacy converters."""
+        """Выполняет шаг «risk analysis prompt section». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         technical_info = assessment_result.technical_info
         return {
             "risks": [
@@ -249,7 +249,7 @@ class MVPPlannerStage(BaseLLMStage):
 
     @staticmethod
     def _evaluation_prompt_section(assessment_result: AssessmentResult) -> dict:
-        """Build the legacy-shaped evaluation section without legacy converters."""
+        """Выполняет шаг «evaluation prompt section». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         technical_info = assessment_result.technical_info
         return {
             "criterion_evaluations": [
@@ -272,12 +272,12 @@ class MVPPlannerStage(BaseLLMStage):
         }
 
     def _render_system_prompt(self) -> str:
-        """Render the system prompt template."""
+        """Готовит человекочитаемый текст из внутренних данных. Это нужно для промптов, объяснений или финального ответа."""
         return self._render_prompt({"planning_context": ""}).system
 
     @staticmethod
     def _default_prompt_path() -> Path:
-        """Return the default MVP planner prompt path."""
+        """Возвращает значение по умолчанию, чтобы этап мог работать без ручной настройки."""
         return Path(__file__).resolve().parents[2] / "prompts" / "mvp_planner.md"
 
     def _build_failure_exception(
@@ -285,5 +285,5 @@ class MVPPlannerStage(BaseLLMStage):
         attempts: int,
         last_error: Exception | None,
     ) -> Exception:
-        """Build the MVP-planner-specific failure exception."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return MVPPlannerError(f"Unable to generate MVP plan after {attempts} attempts")

@@ -1,4 +1,4 @@
-"""Models for final self-check validation."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from app.schemas.extraction import ExtractedBrief
 
 
 class SelfCheckContext(BaseModel):
-    """Input context for final response validation."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     response_text: str
     response_payload: dict[str, Any] | None = None
@@ -35,7 +35,7 @@ class SelfCheckContext(BaseModel):
     @field_validator("response_text")
     @classmethod
     def _strip_response_text(cls, value: str) -> str:
-        """Reject blank response text."""
+        """Выполняет шаг «strip response text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         value = value.strip()
         if not value:
             raise ValueError("response_text must not be empty")
@@ -44,7 +44,7 @@ class SelfCheckContext(BaseModel):
 
 
 class SelfCheckPayload(BaseModel):
-    """Raw JSON payload expected from the LLM self-check."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     is_valid: bool
     issues: list[str] = Field(default_factory=list)
@@ -56,7 +56,7 @@ class SelfCheckPayload(BaseModel):
     @field_validator("issues", "warnings", "checked_fields")
     @classmethod
     def _normalize_text_list(cls, value: list[str]) -> list[str]:
-        """Normalize list-based string fields."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         if not isinstance(value, list):
             raise ValueError("must be a list")
 
@@ -73,7 +73,7 @@ class SelfCheckPayload(BaseModel):
 
     @model_validator(mode="after")
     def _validate_consistency(self) -> "SelfCheckPayload":
-        """Keep the validity flag aligned with recorded issues."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if self.is_valid and self.issues:
             raise ValueError("is_valid cannot be true when issues are present")
         if not self.is_valid and not self.issues:
@@ -83,7 +83,7 @@ class SelfCheckPayload(BaseModel):
 
 
 class SelfCheckTechnicalInfo(BaseModel):
-    """Technical metadata for the self-check run."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     deterministic_issues_count: int = 0
     deterministic_warning_count: int = 0
@@ -101,7 +101,7 @@ class SelfCheckTechnicalInfo(BaseModel):
 
 
 class SelfCheckResult(BaseModel):
-    """Structured result produced by the final self-check."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     is_valid: bool
     issues: list[str] = Field(default_factory=list)
@@ -114,7 +114,7 @@ class SelfCheckResult(BaseModel):
     @field_validator("issues", "warnings", "checked_fields")
     @classmethod
     def _normalize_text_list(cls, value: list[str]) -> list[str]:
-        """Normalize list-based string fields."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         if not isinstance(value, list):
             raise ValueError("must be a list")
 
@@ -131,7 +131,7 @@ class SelfCheckResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_consistency(self) -> "SelfCheckResult":
-        """Keep the validity flag aligned with reported issues."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if self.is_valid and self.issues:
             raise ValueError("is_valid cannot be true when issues are present")
         if not self.is_valid and not self.issues:

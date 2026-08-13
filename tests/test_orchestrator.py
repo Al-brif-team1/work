@@ -1,4 +1,4 @@
-"""Tests for end-to-end pipeline orchestration."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -37,10 +37,10 @@ from app.schemas import (
 
 
 class ExtractionStageStub:
-    """Pipeline stage stub that adds extracted data."""
+    """Класс «ExtractionStageStub» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Add a deterministic extracted brief."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return context.with_extracted_brief(
             ExtractedBrief(
                 project_goal=ExtractedFact(
@@ -65,10 +65,10 @@ class ExtractionStageStub:
 
 
 class CompletenessStageStub:
-    """Pipeline stage stub that adds completeness data."""
+    """Класс «CompletenessStageStub» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Mark the brief as complete."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return context.with_completeness_result(
             CompletenessResult(
                 is_complete=True,
@@ -80,10 +80,10 @@ class CompletenessStageStub:
 
 
 class AssessmentStageStub:
-    """Pipeline stage stub that adds assessment data."""
+    """Класс «AssessmentStageStub» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Add an accept-ready assessment."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return context.with_assessment_result(
             AssessmentResult(
                 criterion_evaluations=[
@@ -105,10 +105,10 @@ class AssessmentStageStub:
 
 
 class ArbiterStageStub:
-    """Pipeline stage stub that adds arbitration data."""
+    """Класс «ArbiterStageStub» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Add an ACCEPT arbitration result."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return context.with_arbitration_result(
             ArbitrationResult(
                 final_status=DecisionStatus.accept,
@@ -122,7 +122,7 @@ class ArbiterStageStub:
 
 
 class FakeProductionLLMClient:
-    """Minimal fake for factory integration tests."""
+    """Класс «FakeProductionLLMClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, responses: list[dict[str, Any]]) -> None:
         self._responses = list(responses)
@@ -239,7 +239,7 @@ def _build_factory_pipeline(fake_client: FakeProductionLLMClient) -> BriefAnalys
 
 
 class TestBriefAnalysisPipeline(unittest.TestCase):
-    """Unit tests for the orchestrator contract."""
+    """Класс «TestBriefAnalysisPipeline» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_production_factory_uses_only_active_stages(self) -> None:
         pipeline = _build_factory_pipeline(FakeProductionLLMClient([]))

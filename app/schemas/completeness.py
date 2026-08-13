@@ -1,4 +1,4 @@
-"""Models for completeness checking of extracted briefs."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CompletenessStatus(str, Enum):
-    """Status assigned to a field during completeness analysis."""
+    """Класс «CompletenessStatus» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     present = "present"
     missing = "missing"
@@ -17,7 +17,7 @@ class CompletenessStatus(str, Enum):
 
 
 class CompletenessLevel(str, Enum):
-    """Aggregate completeness level used by downstream stages."""
+    """Класс «CompletenessLevel» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     complete = "complete"
     needs_clarification = "needs_clarification"
@@ -25,7 +25,7 @@ class CompletenessLevel(str, Enum):
 
 
 class CompletenessItem(BaseModel):
-    """A single completeness assessment for one configured field."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     field_key: str
     field_path: str
@@ -39,7 +39,7 @@ class CompletenessItem(BaseModel):
 
 
 class CompletenessTechnicalInfo(BaseModel):
-    """Technical metadata produced by the deterministic completeness stage."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     checked_fields_count: int = 0
     required_fields_count: int = 0
@@ -53,7 +53,7 @@ class CompletenessTechnicalInfo(BaseModel):
 
 
 class CompletenessResult(BaseModel):
-    """Result of a completeness check over an extracted brief."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     is_complete: bool
     level: CompletenessLevel = CompletenessLevel.complete

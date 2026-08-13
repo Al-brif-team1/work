@@ -1,4 +1,4 @@
-"""Tests for the centralized LLM runner."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from app.llm import (
 
 
 class RecordingTraceContext:
-    """Simple trace/span context used by unit tests."""
+    """Класс «RecordingTraceContext» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.id = "trace-1"
@@ -29,7 +29,7 @@ class RecordingTraceContext:
 
 
 class RecordingTracingClient:
-    """Tracing double that records trace and span updates."""
+    """Класс «RecordingTracingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.trace = RecordingTraceContext()
@@ -52,7 +52,7 @@ class RecordingTracingClient:
 
 
 class FakeLLMClient:
-    """Deterministic LLM client used for runner tests."""
+    """Класс «FakeLLMClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(
         self,
@@ -80,13 +80,13 @@ class FakeLLMClient:
 
 
 class RunnerPayload(BaseModel):
-    """Minimal structured response for runner tests."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     value: str
 
 
 class TestLLMRunner(unittest.TestCase):
-    """Unit tests for centralized LLM execution."""
+    """Класс «TestLLMRunner» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_retries_provider_errors_and_returns_telemetry(self) -> None:
         llm_client = FakeLLMClient(

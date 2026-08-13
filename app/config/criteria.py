@@ -1,4 +1,4 @@
-"""Criteria configuration models and loader."""
+"""Модуль конфигурации проекта. Он загружает настройки и criteria.yaml, чтобы детерминированные роботы работали по понятным правилам."""
 
 from __future__ import annotations
 
@@ -10,15 +10,15 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class CriteriaConfigError(RuntimeError):
-    """Raised when criteria configuration cannot be loaded or validated."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class CriteriaYAMLSyntaxError(CriteriaConfigError):
-    """Raised when criteria YAML text cannot be parsed."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class DecisionThresholds(BaseModel):
-    """Decision thresholds or conditions for a criterion."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     min_score: int | None = None
     max_score: int | None = None
@@ -29,7 +29,7 @@ class DecisionThresholds(BaseModel):
 
 
 class Criterion(BaseModel):
-    """A single evaluation criterion definition."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     key: str
     title: str
@@ -43,7 +43,7 @@ class Criterion(BaseModel):
 
 
 class RequiredField(BaseModel):
-    """A required brief field definition."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     key: str
     field_path: str
@@ -56,7 +56,7 @@ class RequiredField(BaseModel):
 
 
 class TaskType(BaseModel):
-    """A task type definition used during brief evaluation."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     key: str
     title: str
@@ -68,7 +68,7 @@ class TaskType(BaseModel):
 
 
 class ProjectType(BaseModel):
-    """A project type or direction definition used during evaluation."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     key: str
     title: str
@@ -80,7 +80,7 @@ class ProjectType(BaseModel):
 
 
 class RiskType(BaseModel):
-    """A configurable risk type for analysis prompts."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     key: str
     title: str
@@ -93,7 +93,7 @@ class RiskType(BaseModel):
 
 
 class RiskAnalysisConfiguration(BaseModel):
-    """Configuration for the risk analysis stage."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     version: str
     description: str
@@ -104,7 +104,7 @@ class RiskAnalysisConfiguration(BaseModel):
 
 
 class ArbitrationCondition(BaseModel):
-    """A single condition used by deterministic arbitration rules."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     field: str
     operator: str
@@ -115,7 +115,7 @@ class ArbitrationCondition(BaseModel):
 
 
 class ArbitrationRule(BaseModel):
-    """A deterministic decision rule for final arbitration."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     key: str
     title: str
@@ -128,7 +128,7 @@ class ArbitrationRule(BaseModel):
 
 
 class ArbitrationConfiguration(BaseModel):
-    """Configuration for the deterministic arbitration stage."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     version: str
     description: str
@@ -139,7 +139,7 @@ class ArbitrationConfiguration(BaseModel):
 
 
 class EvaluationConfiguration(BaseModel):
-    """Validated configuration that powers future brief evaluation logic."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     version: str
     description: str
@@ -155,7 +155,7 @@ class EvaluationConfiguration(BaseModel):
 
 
 class CriteriaConfig(BaseModel):
-    """Top-level wrapper for the criteria YAML document."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     evaluation: EvaluationConfiguration
 
@@ -163,11 +163,11 @@ class CriteriaConfig(BaseModel):
 
 
 class CriteriaLoader:
-    """Load and validate criteria configuration from YAML."""
+    """Класс «CriteriaLoader» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     @staticmethod
     def load(path: Path | None = None) -> CriteriaConfig:
-        """Load criteria configuration from ``path`` or the default file."""
+        """Выполняет шаг «load». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         config_path = path or CriteriaLoader.default_path()
 
         try:
@@ -197,18 +197,18 @@ class CriteriaLoader:
 
     @staticmethod
     def default_path() -> Path:
-        """Return the default criteria YAML path."""
+        """Выполняет шаг «default path». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return Path(__file__).resolve().parents[2] / "config" / "criteria.yaml"
 
 
 @lru_cache(maxsize=1)
 def get_criteria_config() -> CriteriaConfig:
-    """Return cached validated criteria configuration."""
+    """Возвращает уже подготовленный объект или настройку, чтобы остальные части проекта использовали единый источник."""
     return CriteriaLoader.load()
 
 
 def _load_yaml_like(text: str) -> dict[str, Any]:
-    """Parse the limited YAML subset used by the criteria configuration."""
+    """Выполняет шаг «load yaml like». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     lines = _preprocess_yaml_lines(text)
     if not lines:
         raise CriteriaYAMLSyntaxError("Criteria configuration is empty")
@@ -224,7 +224,7 @@ def _load_yaml_like(text: str) -> dict[str, Any]:
 
 
 def _preprocess_yaml_lines(text: str) -> list[tuple[int, str]]:
-    """Normalize YAML text into indentation-aware content lines."""
+    """Выполняет шаг «preprocess yaml lines». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     result: list[tuple[int, str]] = []
     for raw_line in text.splitlines():
         stripped = raw_line.strip()
@@ -242,7 +242,7 @@ def _parse_block(
     index: int,
     indent: int,
 ) -> tuple[Any, int]:
-    """Parse a mapping or list block at a specific indentation level."""
+    """Разбирает текстовое значение и превращает его в программный объект. Так код дальше работает не с произвольной строкой, а с понятной структурой."""
     if index >= len(lines):
         return {}, index
 
@@ -261,7 +261,7 @@ def _parse_mapping(
     index: int,
     indent: int,
 ) -> tuple[dict[str, Any], int]:
-    """Parse a YAML mapping block."""
+    """Разбирает текстовое значение и превращает его в программный объект. Так код дальше работает не с произвольной строкой, а с понятной структурой."""
     mapping: dict[str, Any] = {}
 
     while index < len(lines):
@@ -296,7 +296,7 @@ def _parse_list(
     index: int,
     indent: int,
 ) -> tuple[list[Any], int]:
-    """Parse a YAML list block."""
+    """Разбирает текстовое значение и превращает его в программный объект. Так код дальше работает не с произвольной строкой, а с понятной структурой."""
     items: list[Any] = []
 
     while index < len(lines):
@@ -348,7 +348,7 @@ def _parse_list(
 
 
 def _split_key_value(content: str) -> tuple[str, str | None]:
-    """Split a single ``key: value`` YAML line."""
+    """Выполняет шаг «split key value». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     if ":" not in content:
         raise CriteriaYAMLSyntaxError(f"Invalid YAML line: {content}")
 
@@ -359,7 +359,7 @@ def _split_key_value(content: str) -> tuple[str, str | None]:
 
 
 def _parse_scalar(value_text: str) -> Any:
-    """Parse a scalar YAML value from the limited supported subset."""
+    """Разбирает текстовое значение и превращает его в программный объект. Так код дальше работает не с произвольной строкой, а с понятной структурой."""
     if value_text is None:
         return None
 

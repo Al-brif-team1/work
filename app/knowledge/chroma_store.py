@@ -1,4 +1,4 @@
-"""ChromaDB-backed vector store implementation."""
+"""Модуль базы знаний. Он готовит, индексирует и ищет справочные материалы, чтобы ИИ-этапы опирались не только на бриф, но и на контекст проекта."""
 
 from __future__ import annotations
 
@@ -14,18 +14,18 @@ MetadataDict = dict[str, Any]
 
 
 class VectorStoreError(RuntimeError):
-    """Raised when the vector store cannot be created or used."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class ChromaVectorStore(VectorStore):
-    """ChromaDB-backed implementation of the vector store protocol."""
+    """Класс «ChromaVectorStore» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(
         self,
         collection_name: str,
         persist_directory: str | Path | None = None,
     ) -> None:
-        """Create a Chroma-backed store for the given collection."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         chromadb = self._import_chromadb()
 
         self._collection_name = collection_name
@@ -44,7 +44,7 @@ class ChromaVectorStore(VectorStore):
         documents: Sequence[Document],
         embeddings: Sequence[Sequence[float]],
     ) -> None:
-        """Store documents with matching embeddings in Chroma."""
+        """Выполняет шаг «add documents». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         self._validate_alignment(documents, embeddings)
 
         self._collection.upsert(
@@ -58,7 +58,7 @@ class ChromaVectorStore(VectorStore):
         )
 
     def delete_documents(self, document_ids: Sequence[str]) -> None:
-        """Delete documents by identifier."""
+        """Выполняет шаг «delete documents». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not document_ids:
             return None
 
@@ -70,7 +70,7 @@ class ChromaVectorStore(VectorStore):
         top_k: int = 5,
         metadata_filters: dict[str, Any] | None = None,
     ) -> list[SearchResult]:
-        """Return the top-k documents most similar to the query embedding."""
+        """Выполняет шаг «search». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if top_k <= 0:
             return []
 
@@ -121,13 +121,13 @@ class ChromaVectorStore(VectorStore):
         documents: Sequence[Document],
         embeddings: Sequence[Sequence[float]],
     ) -> None:
-        """Ensure documents and embeddings line up one-to-one."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if len(documents) != len(embeddings):
             raise ValueError("documents and embeddings must have the same length")
 
     @staticmethod
     def _metadata_to_dict(metadata: DocumentMetadata) -> MetadataDict:
-        """Convert metadata to a Chroma-friendly dictionary."""
+        """Выполняет шаг «metadata to dict». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         raw = metadata.model_dump(exclude_none=True)
         return {
             key: ChromaVectorStore._normalize_value(value)
@@ -136,12 +136,12 @@ class ChromaVectorStore(VectorStore):
 
     @staticmethod
     def _metadata_from_dict(metadata: MetadataDict) -> DocumentMetadata:
-        """Convert raw metadata back to the document metadata model."""
+        """Выполняет шаг «metadata from dict». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return DocumentMetadata.model_validate(metadata)
 
     @staticmethod
     def _normalize_value(value: Any) -> Any:
-        """Normalize values for storage in Chroma metadata."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         if value is None or isinstance(value, (str, int, float, bool)):
             return value
 
@@ -151,7 +151,7 @@ class ChromaVectorStore(VectorStore):
     def _normalize_filters(
         metadata_filters: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
-        """Normalize metadata filters for Chroma exact-match queries."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         if metadata_filters is None:
             return None
 
@@ -169,7 +169,7 @@ class ChromaVectorStore(VectorStore):
 
     @staticmethod
     def _import_chromadb() -> Any:
-        """Import chromadb lazily and raise a readable error if unavailable."""
+        """Выполняет шаг «import chromadb». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         try:
             import chromadb
         except ImportError as exc:

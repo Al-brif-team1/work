@@ -1,4 +1,4 @@
-"""Document loading utilities for the knowledge base."""
+"""Модуль базы знаний. Он готовит, индексирует и ищет справочные материалы, чтобы ИИ-этапы опирались не только на бриф, но и на контекст проекта."""
 
 from __future__ import annotations
 
@@ -10,25 +10,25 @@ from app.schemas import Document, DocumentMetadata
 
 @dataclass(frozen=True)
 class DocumentLoaderConfig:
-    """Configuration for document loading."""
+    """Класс «DocumentLoaderConfig» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     base_directory: Path
     supported_extensions: tuple[str, ...] = (".md", ".txt")
 
 
 class DocumentLoaderError(RuntimeError):
-    """Raised when a document cannot be loaded."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class DocumentLoader:
-    """Load knowledge documents from disk into structured models."""
+    """Класс «DocumentLoader» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(
         self,
         base_directory: str | Path = Path("knowledge"),
         supported_extensions: tuple[str, ...] = (".md", ".txt"),
     ) -> None:
-        """Create a loader rooted at ``base_directory``."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         self._config = DocumentLoaderConfig(
             base_directory=Path(base_directory),
             supported_extensions=supported_extensions,
@@ -36,11 +36,11 @@ class DocumentLoader:
 
     @property
     def base_directory(self) -> Path:
-        """Return the configured base directory."""
+        """Выполняет шаг «base directory». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._config.base_directory
 
     def load_directory(self, directory: str | Path | None = None) -> list[Document]:
-        """Load all supported documents from a directory tree."""
+        """Выполняет шаг «load directory». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         root = Path(directory) if directory is not None else self.base_directory
         if not root.exists():
             raise DocumentLoaderError(f"Knowledge directory does not exist: {root}")
@@ -55,7 +55,7 @@ class DocumentLoader:
         return documents
 
     def load_file(self, path: str | Path) -> Document:
-        """Load a single text or markdown document."""
+        """Выполняет шаг «load file». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         file_path = Path(path)
         if not file_path.exists():
             raise DocumentLoaderError(f"Document does not exist: {file_path}")
@@ -85,7 +85,7 @@ class DocumentLoader:
         )
 
     def _relative_path(self, file_path: Path) -> Path:
-        """Return a stable path relative to the configured base directory."""
+        """Выполняет шаг «relative path». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         try:
             return file_path.relative_to(self.base_directory)
         except ValueError:
@@ -93,7 +93,7 @@ class DocumentLoader:
 
     @staticmethod
     def _category_for(relative_path: Path) -> str:
-        """Derive a simple category from the document path."""
+        """Выполняет шаг «category for». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         parent = relative_path.parent
         if str(parent) in {".", ""}:
             return "root"

@@ -1,4 +1,4 @@
-"""LLM client abstractions and adapters."""
+"""Модуль инфраструктуры LLM. Он отделяет работу с ИИ-моделью от бизнес-логики, чтобы роботы конвейера получали ответы единым способом."""
 
 from app.llm.client import LLMClient
 from app.llm.factory import LLMClientFactory

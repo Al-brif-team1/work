@@ -1,4 +1,4 @@
-"""Knowledge indexing orchestration."""
+"""Модуль базы знаний. Он готовит, индексирует и ищет справочные материалы, чтобы ИИ-этапы опирались не только на бриф, но и на контекст проекта."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from app.schemas import Document, DocumentMetadata
 
 @dataclass(frozen=True)
 class IndexedChunk:
-    """A chunk produced during knowledge indexing."""
+    """Класс «IndexedChunk» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     document: Document
     source_document_id: str
@@ -23,7 +23,7 @@ class IndexedChunk:
 
 
 class KnowledgeIndexer:
-    """Load, chunk, embed, and store knowledge documents."""
+    """Класс «KnowledgeIndexer» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(
         self,
@@ -32,19 +32,19 @@ class KnowledgeIndexer:
         embedding_client: EmbeddingClient,
         vector_store: VectorStore,
     ) -> None:
-        """Create an indexer from the required infrastructure components."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         self._loader = loader
         self._chunker = chunker
         self._embedding_client = embedding_client
         self._vector_store = vector_store
 
     def index_directory(self, directory: str | Path | None = None) -> int:
-        """Load a directory and index all supported documents."""
+        """Выполняет шаг «index directory». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         documents = self._loader.load_directory(directory)
         return self.index_documents(documents)
 
     def index_documents(self, documents: Sequence[Document]) -> int:
-        """Chunk and store a set of already loaded documents."""
+        """Выполняет шаг «index documents». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         indexed_chunks: list[Document] = []
         for document in documents:
             chunks = self._chunk_document(document)
@@ -60,7 +60,7 @@ class KnowledgeIndexer:
         return len(indexed_chunks)
 
     def _chunk_document(self, document: Document) -> list[IndexedChunk]:
-        """Split a document into indexed chunks."""
+        """Выполняет шаг «chunk document». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         chunk_texts = self._chunker.chunk(document.text)
         chunks: list[IndexedChunk] = []
 
@@ -87,7 +87,7 @@ class KnowledgeIndexer:
         chunk_index: int,
         chunk_count: int,
     ) -> DocumentMetadata:
-        """Attach chunk metadata to a document metadata object."""
+        """Выполняет шаг «chunk metadata». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return DocumentMetadata.model_validate(
             {
                 **metadata.model_dump(exclude_none=True),
@@ -100,5 +100,5 @@ class KnowledgeIndexer:
 
     @staticmethod
     def _chunk_id(document_id: str, chunk_index: int) -> str:
-        """Build a stable chunk identifier."""
+        """Выполняет шаг «chunk id». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return f"{document_id}::chunk::{chunk_index:04d}"

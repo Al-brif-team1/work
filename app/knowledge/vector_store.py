@@ -1,4 +1,4 @@
-"""Vector store abstraction for knowledge retrieval."""
+"""Модуль базы знаний. Он готовит, индексирует и ищет справочные материалы, чтобы ИИ-этапы опирались не только на бриф, но и на контекст проекта."""
 
 from __future__ import annotations
 
@@ -10,18 +10,18 @@ from app.schemas import Document, SearchResult
 
 @runtime_checkable
 class VectorStore(Protocol):
-    """Provider-independent interface for vector similarity search."""
+    """Класс «VectorStore» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def add_documents(
         self,
         documents: Sequence[Document],
         embeddings: Sequence[Sequence[float]],
     ) -> None:
-        """Store documents together with their embeddings."""
+        """Выполняет шаг «add documents». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         ...
 
     def delete_documents(self, document_ids: Sequence[str]) -> None:
-        """Delete documents by their identifiers."""
+        """Выполняет шаг «delete documents». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         ...
 
     def search(
@@ -30,5 +30,5 @@ class VectorStore(Protocol):
         top_k: int = 5,
         metadata_filters: dict[str, Any] | None = None,
     ) -> list[SearchResult]:
-        """Return the top-k most similar documents for a query embedding."""
+        """Выполняет шаг «search». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         ...

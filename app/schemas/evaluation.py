@@ -1,4 +1,4 @@
-"""Models for criterion evaluation results."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CriterionEvaluationStatus(str, Enum):
-    """Status assigned to an evaluated criterion."""
+    """Класс «CriterionEvaluationStatus» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     met = "met"
     not_met = "not_met"
@@ -17,7 +17,7 @@ class CriterionEvaluationStatus(str, Enum):
 
 
 class CriterionEvaluation(BaseModel):
-    """Result for a single criterion."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     criterion: str
     criterion_title: str | None = None

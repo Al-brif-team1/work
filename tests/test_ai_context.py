@@ -1,4 +1,4 @@
-"""Tests for the shared AIContext model."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from app.schemas import (
 
 
 def make_extracted_brief() -> ExtractedBrief:
-    """Create a minimal extracted brief for context tests."""
+    """Выполняет шаг «make extracted brief». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     explicit_goal = ExtractedFact(
         status=FactStatus.explicit,
         value="Build a portal",
@@ -71,7 +71,7 @@ def make_extracted_brief() -> ExtractedBrief:
 
 
 def make_extraction_result() -> ExtractionResult:
-    """Create a minimal extraction result for context tests."""
+    """Выполняет шаг «make extraction result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return ExtractionResult(
         extracted_brief=make_extracted_brief(),
         technical_info=ExtractorTechnicalInfo(
@@ -87,7 +87,7 @@ def make_extraction_result() -> ExtractionResult:
 
 
 def make_completeness_result() -> CompletenessResult:
-    """Create a minimal completeness result for context tests."""
+    """Выполняет шаг «make completeness result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return CompletenessResult(
         is_complete=True,
         missing_information=[],
@@ -108,7 +108,7 @@ def make_completeness_result() -> CompletenessResult:
 
 
 def make_search_result(document_id: str) -> SearchResult:
-    """Create a search result for context tests."""
+    """Выполняет шаг «make search result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return SearchResult(
         document=Document(
             id=document_id,
@@ -121,7 +121,7 @@ def make_search_result(document_id: str) -> SearchResult:
 
 
 class TestAIContext(unittest.TestCase):
-    """Unit tests for AIContext."""
+    """Класс «TestAIContext» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_creates_context_from_brief_and_exposes_text_properties(self) -> None:
         brief_input = BriefInputFactory().from_text("  Build   a portal  ")

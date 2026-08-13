@@ -1,4 +1,4 @@
-"""Deterministic clarification question generation from templates."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -18,15 +18,15 @@ from app.tracing.tracing import NoOpTracingClient, TracingClient
 
 
 class QuestionGenerationError(RuntimeError):
-    """Raised when clarification question generation fails."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class QuestionGeneratorConfigError(QuestionGenerationError):
-    """Raised when question template configuration is missing or invalid."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
-    """Generate clarification questions from deterministic field templates."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Робот этапа. Он выполняет участок конвейера «template question generator stage». Этот этап работает как детерминированный робот: обычный код, без творческих догадок ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseStage, поэтому он умеет работать в нашем конвейере."""
 
     def __init__(
         self,
@@ -35,7 +35,7 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
         templates_path: str | Path | None = None,
         tracing_client: TracingClient | None = None,
     ) -> None:
-        """Initialize the template-based generator."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         super().__init__(
             stage_name=self.__class__.__name__,
             tracing_client=tracing_client or NoOpTracingClient(),
@@ -54,7 +54,7 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
         *,
         assessment_recommendation: AssessmentRecommendation | None = None,
     ) -> QuestionGenerationResult:
-        """Generate questions for missing fields without invoking an LLM."""
+        """Выполняет шаг «generate». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         questions: list[ClarificationQuestion] = []
         missing_template_fields: list[str] = []
 
@@ -96,7 +96,7 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
         )
 
     def generate_context(self, context: AIContext) -> AIContext:
-        """Return context enriched with template-generated questions."""
+        """Выполняет шаг «generate context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if context.completeness_result is None:
             raise QuestionGenerationError(
                 "Question generation requires completeness_result in AIContext"
@@ -113,15 +113,15 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
         return context.with_clarification_result(result)
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Run this stage using the common AIContext pipeline contract."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return self.run(context)
 
     def _run(self, stage_input: AIContext) -> AIContext:
-        """Run deterministic question generation."""
+        """[ЗАПУСК РОБОТА] Главная команда этапа: она заставляет этого робота выполнить свою работу и вернуть результат в формате, который понимает следующий участок конвейера."""
         return self.generate_context(stage_input)
 
     def _build_stage_exception(self, exc: Exception) -> Exception:
-        """Preserve question-generation-specific errors."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return exc
 
     @staticmethod
@@ -131,7 +131,7 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
         missing_template_fields: list[str],
         assessment_recommendation: AssessmentRecommendation | None,
     ) -> str:
-        """Build a compact deterministic generation summary."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         parts = [f"Generated {questions_count} clarification questions from templates."]
         if missing_template_fields:
             parts.append(
@@ -145,7 +145,7 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _load_templates(path: str | Path) -> dict[str, str]:
-        """Load question templates from a JSON mapping."""
+        """Выполняет шаг «load templates». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         template_path = Path(path)
         try:
             raw = json.loads(template_path.read_text(encoding="utf-8"))
@@ -170,5 +170,5 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _default_templates_path() -> Path:
-        """Return the default question-template configuration path."""
+        """Возвращает значение по умолчанию, чтобы этап мог работать без ручной настройки."""
         return Path(__file__).resolve().parents[2] / "config" / "question_templates.json"

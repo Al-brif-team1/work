@@ -13,7 +13,7 @@ from app.tracing.tracing import NoOpTracingClient, TracingClientFactory
 
 
 class FakeCompletions:
-    """Fake OpenAI completions API for LLM client smoke tests."""
+    """Класс «FakeCompletions» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def create(self, **kwargs: Any) -> Any:
         if kwargs.get("stream"):
@@ -33,14 +33,14 @@ class FakeCompletions:
 
 
 class FakeOpenAIClient:
-    """Fake OpenAI client exposing chat.completions.create."""
+    """Класс «FakeOpenAIClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.chat = SimpleNamespace(completions=FakeCompletions())
 
 
 class TestInfrastructure(unittest.TestCase):
-    """Infrastructure smoke tests for settings, logging, LLM, and tracing."""
+    """Класс «TestInfrastructure» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_settings_loads_from_environment(self) -> None:
         env = {

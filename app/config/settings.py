@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """Класс «Settings» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     openrouter_api_key: str = Field(..., alias="OPENROUTER_API_KEY")
     openrouter_model: str = Field(..., alias="OPENROUTER_MODEL")
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     )
     @classmethod
     def _validate_positive(cls, value: int) -> int:
-        """Ensure numeric knowledge settings are positive."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if value <= 0:
             raise ValueError("must be greater than zero")
 
@@ -46,7 +46,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_chunk_relationship(self) -> "Settings":
-        """Ensure the chunk overlap stays smaller than the chunk size."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if self.knowledge_chunk_overlap >= self.knowledge_chunk_size:
             raise ValueError("knowledge_chunk_overlap must be smaller than knowledge_chunk_size")
 
@@ -54,11 +54,11 @@ class Settings(BaseSettings):
 
 
 class Config:
-    """Loads validated application settings from the project .env file."""
+    """Класс «Config» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     @staticmethod
     def load() -> Settings:
-        """Load settings and convert validation failures to readable errors."""
+        """Выполняет шаг «load». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         env_file = Config._env_file()
         load_dotenv(dotenv_path=env_file, override=False)
 
@@ -81,11 +81,11 @@ class Config:
 
     @staticmethod
     def _env_file() -> Path:
-        """Return the absolute path to the project .env file."""
+        """Выполняет шаг «env file». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return Path(__file__).resolve().parents[2] / ".env"
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Return cached application settings."""
+    """Возвращает уже подготовленный объект или настройку, чтобы остальные части проекта использовали единый источник."""
     return Config.load()

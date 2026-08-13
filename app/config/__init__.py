@@ -1,4 +1,4 @@
-"""Configuration package exports."""
+"""Модуль конфигурации проекта. Он загружает настройки и criteria.yaml, чтобы детерминированные роботы работали по понятным правилам."""
 
 from app.config.settings import Config, Settings, get_settings
 from app.config.criteria import (

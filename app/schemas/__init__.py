@@ -1,4 +1,4 @@
-"""Shared application schema package."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from app.schemas.assessment import (
     AssessmentEvidence,

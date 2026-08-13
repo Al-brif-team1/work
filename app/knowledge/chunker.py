@@ -1,4 +1,4 @@
-"""Text chunking utilities for knowledge documents."""
+"""Модуль базы знаний. Он готовит, индексирует и ищет справочные материалы, чтобы ИИ-этапы опирались не только на бриф, но и на контекст проекта."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Chunk:
-    """A text chunk with its positional metadata."""
+    """Класс «Chunk» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     text: str
     start: int
@@ -15,10 +15,10 @@ class Chunk:
 
 
 class TextChunker:
-    """Split long text into overlapping chunks."""
+    """Класс «TextChunker» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, chunk_size: int, overlap: int) -> None:
-        """Create a chunker with the given size and overlap."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         if chunk_size <= 0:
             raise ValueError("chunk_size must be greater than zero")
         if overlap < 0:
@@ -31,20 +31,20 @@ class TextChunker:
 
     @property
     def chunk_size(self) -> int:
-        """Return the configured chunk size."""
+        """Выполняет шаг «chunk size». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._chunk_size
 
     @property
     def overlap(self) -> int:
-        """Return the configured chunk overlap."""
+        """Выполняет шаг «overlap». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._overlap
 
     def chunk(self, text: str) -> list[str]:
-        """Split text into overlapping chunks."""
+        """Выполняет шаг «chunk». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return [chunk.text for chunk in self.chunk_with_positions(text)]
 
     def chunk_with_positions(self, text: str) -> list[Chunk]:
-        """Split text into chunks and keep byte-offset-like positions."""
+        """Выполняет шаг «chunk with positions». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         normalized = text.strip()
         if not normalized:
             return []
@@ -73,7 +73,7 @@ class TextChunker:
 
     @staticmethod
     def _preferred_split(text: str, start: int, end: int) -> int:
-        """Prefer splitting on whitespace or newline when possible."""
+        """Выполняет шаг «preferred split». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         newline = text.rfind("\n", start, end)
         if newline > start:
             return newline + 1

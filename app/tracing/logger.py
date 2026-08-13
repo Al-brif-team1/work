@@ -6,7 +6,7 @@ from app.config import Settings, get_settings
 
 
 class LoggerFactory:
-    """Creates and configures the shared application logger."""
+    """Класс «LoggerFactory» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     LOGGER_NAME = "ai_assistant"
     LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
@@ -14,7 +14,7 @@ class LoggerFactory:
 
     @staticmethod
     def create(settings: Settings) -> logging.Logger:
-        """Create or return the configured shared logger."""
+        """Выполняет шаг «create». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         level = LoggerFactory._resolve_level(settings.log_level)
         logger = logging.getLogger(LoggerFactory.LOGGER_NAME)
         logger.setLevel(level)
@@ -48,7 +48,7 @@ class LoggerFactory:
 
     @staticmethod
     def _resolve_level(level: str) -> int:
-        """Resolve a validated string log level to a logging constant."""
+        """Находит нужное поле внутри вложенной структуры данных. Это похоже на движение по адресу: шаг за шагом до конкретного значения."""
         resolved_level = logging.getLevelName(level.upper())
         if isinstance(resolved_level, int):
             return resolved_level
@@ -57,7 +57,7 @@ class LoggerFactory:
 
     @staticmethod
     def _log_file() -> Path:
-        """Return the log file path and create the logs directory."""
+        """Выполняет шаг «log file». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         log_dir = Path(__file__).resolve().parents[2] / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         return log_dir / "app.log"
@@ -65,5 +65,5 @@ class LoggerFactory:
 
 @lru_cache(maxsize=1)
 def get_logger() -> logging.Logger:
-    """Return the cached shared application logger."""
+    """Возвращает уже подготовленный объект или настройку, чтобы остальные части проекта использовали единый источник."""
     return LoggerFactory.create(settings=get_settings())

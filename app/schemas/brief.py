@@ -1,4 +1,4 @@
-"""Brief input and request metadata models."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class BriefInputMetadata(BaseModel):
-    """Metadata describing how a brief was received."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     source: str = "cli"
     input_type: str = "text"
@@ -21,7 +21,7 @@ class BriefInputMetadata(BaseModel):
 
 
 class BriefInput(BaseModel):
-    """Validated brief input used by the AI pipeline."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     original_text: str
     normalized_text: str
@@ -32,7 +32,7 @@ class BriefInput(BaseModel):
     @field_validator("original_text", "normalized_text")
     @classmethod
     def _ensure_non_empty(cls, value: str) -> str:
-        """Reject blank text values."""
+        """Выполняет шаг «ensure non empty». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not value or not value.strip():
             raise ValueError("text must not be empty")
 

@@ -1,4 +1,4 @@
-"""Completeness checking for extracted project briefs."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -31,15 +31,15 @@ from app.tracing.tracing import NoOpTracingClient, TracingClient
 
 
 class CompletenessError(RuntimeError):
-    """Raised when completeness checking fails."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class CompletenessConfigError(CompletenessError):
-    """Raised when completeness configuration is invalid."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
-    """Determine which brief data is present, missing, or ambiguous."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Робот-контролер. Он без ИИ сверяет извлеченные факты с жестким чек-листом из criteria.yaml и показывает, чего не хватает. Этот этап работает как детерминированный робот: обычный код, без творческих догадок ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseStage, поэтому он умеет работать в нашем конвейере."""
 
     def __init__(
         self,
@@ -48,7 +48,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         tracing_client: TracingClient | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
-        """Initialize the checker from a config object or YAML file."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         super().__init__(
             stage_name=self.__class__.__name__,
             tracing_client=tracing_client or NoOpTracingClient(),
@@ -76,7 +76,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         )
 
     def check(self, extracted_brief: ExtractedBrief) -> CompletenessResult:
-        """Return completeness information for an extracted brief."""
+        """Выполняет шаг «check». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         present_information: list[CompletenessItem] = []
         missing_information: list[CompletenessItem] = []
         critical_missing_information: list[CompletenessItem] = []
@@ -137,11 +137,11 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         )
 
     def _run(self, stage_input: AIContext) -> AIContext:
-        """Run deterministic completeness checking for pipeline context."""
+        """[ЗАПУСК РОБОТА] Главная команда этапа: она заставляет этого робота выполнить свою работу и вернуть результат в формате, который понимает следующий участок конвейера."""
         return self.check_context(stage_input)
 
     def check_context(self, context: AIContext) -> AIContext:
-        """Return context enriched with completeness output."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         if context.extracted_brief is None:
             raise CompletenessError(
                 "Completeness check requires extracted_brief in AIContext"
@@ -149,7 +149,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         return context.with_completeness_result(self.check(context.extracted_brief))
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Run this stage using the common AIContext pipeline contract."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return self.run(context)
 
     def _evaluate_field(
@@ -157,7 +157,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         field_def: RequiredField,
         extracted_brief: ExtractedBrief,
     ) -> CompletenessItem | None:
-        """Evaluate a single configured field against the extracted brief."""
+        """Оценивает один фрагмент данных и относит его к понятной категории. Так детерминированный робот принимает решение по прозрачному правилу."""
         resolved_value = self._resolve_field_path(extracted_brief, field_def.field_path)
         status, value, reason = self._classify_value(
             field_def=field_def,
@@ -181,7 +181,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         field_def: RequiredField,
         resolved_value: Any,
     ) -> tuple[CompletenessStatus, Any | None, str | None]:
-        """Classify a resolved field value into completeness categories."""
+        """Оценивает один фрагмент данных и относит его к понятной категории. Так детерминированный робот принимает решение по прозрачному правилу."""
         if isinstance(resolved_value, ExtractedFact):
             return self._classify_fact(field_def, resolved_value)
 
@@ -215,7 +215,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         field_def: RequiredField,
         fact: ExtractedFact,
     ) -> tuple[CompletenessStatus, Any | None, str | None]:
-        """Classify a single extracted fact."""
+        """Оценивает один фрагмент данных и относит его к понятной категории. Так детерминированный робот принимает решение по прозрачному правилу."""
         if fact.status is FactStatus.explicit and fact.value is not None:
             if (
                 self._is_project_type_field(field_def)
@@ -243,7 +243,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         field_def: RequiredField,
         facts: list[ExtractedFact],
     ) -> tuple[CompletenessStatus, Any | None, str | None]:
-        """Classify a list of extracted facts."""
+        """Оценивает один фрагмент данных и относит его к понятной категории. Так детерминированный робот принимает решение по прозрачному правилу."""
         if not facts:
             return CompletenessStatus.missing, None, None
 
@@ -273,7 +273,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         return CompletenessStatus.missing, None, None
 
     def _resolve_field_path(self, obj: Any, field_path: str) -> Any:
-        """Resolve a dotted field path against a Pydantic model or mapping."""
+        """Находит нужное поле внутри вложенной структуры данных. Это похоже на движение по адресу: шаг за шагом до конкретного значения."""
         current: Any = obj
         for part in field_path.split("."):
             if isinstance(current, BaseModel):
@@ -299,7 +299,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         return current
 
     def _validate_config(self, config: CriteriaConfig) -> CriteriaConfig:
-        """Validate config semantics that are not covered by the YAML schema."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if not config.evaluation.required_fields:
             raise CompletenessConfigError(
                 "criteria configuration has no required fields"
@@ -316,7 +316,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         return config
 
     def _validate_field_path(self, field_path: str) -> None:
-        """Ensure the configured path exists on ExtractedBrief."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         model: type[BaseModel] | None = ExtractedBrief
         for part in field_path.split("."):
             if model is None:
@@ -333,7 +333,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
             model = self._extract_model_type(field_info.annotation)
 
     def _extract_model_type(self, annotation: Any) -> type[BaseModel] | None:
-        """Return a nested BaseModel type from a field annotation if present."""
+        """Выполняет шаг «extract model type». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         origin = get_origin(annotation)
         if origin is list:
             for candidate in get_args(annotation):
@@ -350,7 +350,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         self,
         project_types: list[Any],
     ) -> set[str]:
-        """Build a normalized registry of known project type names."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         registry: set[str] = set()
         for project_type in project_types:
             registry.add(self._normalize_text(project_type.key))
@@ -360,21 +360,21 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         return registry
 
     def _is_project_type_field(self, field_def: RequiredField) -> bool:
-        """Return whether the field represents the project type."""
+        """Выполняет шаг «is project type field». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return field_def.field_path == "project_type"
 
     def _is_known_project_type(self, value: str) -> bool:
-        """Check whether a project type value exists in the configured registry."""
+        """Выполняет шаг «is known project type». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._normalize_text(value) in self._project_type_registry
 
     @staticmethod
     def _is_fact_list(value: list[Any]) -> bool:
-        """Check whether a list contains ExtractedFact items."""
+        """Выполняет шаг «is fact list». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return all(isinstance(item, ExtractedFact) for item in value)
 
     @staticmethod
     def _normalize_text(value: str) -> str:
-        """Normalize text for registry lookups."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return " ".join(value.strip().lower().split())
 
     @staticmethod
@@ -383,7 +383,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         missing_information: list[CompletenessItem],
         clarification_information: list[CompletenessItem],
     ) -> CompletenessLevel:
-        """Build the aggregate deterministic completeness level."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         if missing_information:
             return CompletenessLevel.incomplete
         if clarification_information:
@@ -391,18 +391,18 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         return CompletenessLevel.complete
 
     def _build_stage_exception(self, exc: Exception) -> Exception:
-        """Preserve completeness-specific errors at the stage boundary."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return exc
 
     def _build_trace_input(self, stage_input: AIContext) -> dict[str, Any]:
-        """Build safe trace metadata for completeness checking."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return {
             "has_extraction_result": stage_input.extraction_result is not None,
             "has_extracted_brief": stage_input.extracted_brief is not None,
         }
 
     def _build_trace_output(self, stage_output: AIContext) -> dict[str, Any]:
-        """Build safe trace metadata for the completeness result."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         result = stage_output.completeness_result
         return {
             "status": "success",

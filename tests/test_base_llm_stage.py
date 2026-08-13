@@ -1,4 +1,4 @@
-"""Tests for the shared BaseLLMStage infrastructure."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from app.llm import LLMRunResult, LLMRunnerProviderError, LLMTokenUsage
 
 
 class RecordingTraceContext:
-    """Simple trace/span context used by unit tests."""
+    """Класс «RecordingTraceContext» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.updates: list[dict[str, Any]] = []
@@ -26,7 +26,7 @@ class RecordingTraceContext:
 
 
 class RecordingTracingClient:
-    """Tracing double that records trace and span updates."""
+    """Класс «RecordingTracingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.trace = RecordingTraceContext()
@@ -49,7 +49,7 @@ class RecordingTracingClient:
 
 
 class FakeLLMClient:
-    """Deterministic LLM client used for base stage tests."""
+    """Класс «FakeLLMClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, responses: list[dict[str, Any] | Exception]) -> None:
         self._responses = responses
@@ -70,17 +70,17 @@ class FakeLLMClient:
 
 
 class DummyPayload(BaseModel):
-    """Minimal structured payload for base-stage tests."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     answer: str
 
 
 class DummyStageError(RuntimeError):
-    """Stage-specific error for the dummy stage."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class DummyStage(BaseLLMStage):
-    """Concrete stage used to test the base class."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Робот этапа. Он выполняет участок конвейера «dummy stage». Этот этап работает как детерминированный робот: обычный код, без творческих догадок ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseLLMStage, поэтому он умеет работать в нашем конвейере."""
 
     def run(self, context: str) -> LLMStageRunResult[DummyPayload]:
         messages: list[Message] = [
@@ -108,7 +108,7 @@ class DummyStage(BaseLLMStage):
 
 
 class FakeLLMRunner:
-    """Runner double for the new BaseLLMStage template contract."""
+    """Класс «FakeLLMRunner» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, payload: DummyPayload) -> None:
         self.payload = payload
@@ -138,14 +138,14 @@ class FakeLLMRunner:
 
 
 class FailingLLMRunner:
-    """Runner double that fails like the real runner."""
+    """Класс «FailingLLMRunner» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def run(self, **kwargs: Any) -> LLMRunResult[DummyPayload]:
         raise LLMRunnerProviderError("provider failed")
 
 
 class TemplateStage(BaseLLMStage[str, DummyPayload, str]):
-    """Stage that uses the new BaseLLMStage template method."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Робот этапа. Он выполняет участок конвейера «template stage». Этот этап работает как детерминированный робот: обычный код, без творческих догадок ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseLLMStage, поэтому он умеет работать в нашем конвейере."""
 
     output_model = DummyPayload
 
@@ -171,14 +171,14 @@ class TemplateStage(BaseLLMStage[str, DummyPayload, str]):
 
 
 class PostprocessFailingStage(TemplateStage):
-    """Stage that fails after a successful LLM result."""
+    """Класс «PostprocessFailingStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def postprocess(self, result: LLMRunResult[DummyPayload]) -> str:
         raise ValueError("postprocess failed")
 
 
 class ValidatingStage(TemplateStage):
-    """Stage with output validation wired through BaseLLMStage."""
+    """Класс «ValidatingStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def validate_payload(self, payload: DummyPayload) -> None:
         if payload.answer != "valid":
@@ -186,7 +186,7 @@ class ValidatingStage(TemplateStage):
 
 
 class TestBaseLLMStage(unittest.TestCase):
-    """Tests for the shared LLM stage execution helper."""
+    """Класс «TestBaseLLMStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_executes_with_retry_and_returns_structured_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

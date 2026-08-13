@@ -1,4 +1,4 @@
-"""Extractor output models."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class FactStatus(str, Enum):
-    """Extraction confidence marker for a fact."""
+    """Класс «FactStatus» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     explicit = "explicit"
     missing = "missing"
@@ -17,7 +17,7 @@ class FactStatus(str, Enum):
 
 
 class ExtractedFact(BaseModel):
-    """A single extracted fact with status and evidence."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     status: FactStatus
     value: str | None = None
@@ -30,7 +30,7 @@ class ExtractedFact(BaseModel):
     @field_validator("value")
     @classmethod
     def _strip_empty_value(cls, value: str | None) -> str | None:
-        """Treat blank values as missing."""
+        """Выполняет шаг «strip empty value». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if value is not None and not value.strip():
             return None
 
@@ -38,7 +38,7 @@ class ExtractedFact(BaseModel):
 
 
 class ExtractedBrief(BaseModel):
-    """Structured facts extracted from a project brief."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     project_goal: ExtractedFact
     tasks: list[ExtractedFact] = Field(default_factory=list)
@@ -58,7 +58,7 @@ class ExtractedBrief(BaseModel):
 
 
 class ExtractorTechnicalInfo(BaseModel):
-    """Technical data about extraction and tracing."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     attempts: int
     prompt_name: str
@@ -72,7 +72,7 @@ class ExtractorTechnicalInfo(BaseModel):
 
 
 class ExtractionResult(BaseModel):
-    """Complete result produced by the extractor."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     extracted_brief: ExtractedBrief
     technical_info: ExtractorTechnicalInfo

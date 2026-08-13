@@ -1,4 +1,4 @@
-"""Shared infrastructure for structured LLM-backed pipeline stages."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ TOutput = TypeVar("TOutput")
 
 @dataclass(frozen=True)
 class LLMStageRunResult(Generic[TPayload]):
-    """Shared execution metadata returned by the base stage runner."""
+    """Класс «LLMStageRunResult» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     payload: TPayload
     raw_response: dict[str, Any]
@@ -40,7 +40,7 @@ class LLMStageRunResult(Generic[TPayload]):
     llm_invoked: bool = True
 
     def technical_kwargs(self) -> dict[str, Any]:
-        """Return keyword arguments common to stage technical-info models."""
+        """Выполняет шаг «technical kwargs». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return {
             "attempts": self.attempts,
             "prompt_name": self.prompt_name,
@@ -53,7 +53,7 @@ class LLMStageRunResult(Generic[TPayload]):
 
 
 class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TOutput]):
-    """Base class for stages that use an LLM and structured JSON output."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Робот этапа. Он выполняет участок конвейера «base l l m stage». Этот этап работает как детерминированный робот: обычный код, без творческих догадок ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseStage, поэтому он умеет работать в нашем конвейере."""
 
     output_model: ClassVar[type[BaseModel] | None] = None
 
@@ -70,7 +70,7 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
         llm_runner: LLMRunner | None = None,
         timeout_seconds: float | None = 60.0,
     ) -> None:
-        """Initialize the stage runner and load the prompt template."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         if max_retries <= 0:
             raise ValueError("max_retries must be greater than zero")
         if llm_client is None and llm_runner is None:
@@ -110,7 +110,7 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
             )
 
     def _run(self, stage_input: TInput) -> TOutput:
-        """Run the standard LLM lifecycle for subclasses using the new contract."""
+        """[ЗАПУСК РОБОТА] Главная команда этапа: она заставляет этого робота выполнить свою работу и вернуть результат в формате, который понимает следующий участок конвейера."""
         output_model = self._resolve_output_model()
         try:
             llm_result = self._llm_runner.run(
@@ -138,21 +138,21 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
 
     @property
     def trace_name(self) -> str:
-        """Return the default trace name for this LLM stage."""
+        """Выполняет шаг «trace name». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return f"{self.__class__.__name__}.run"
 
     @property
     def span_name(self) -> str:
-        """Return the default span name for the model call."""
+        """Выполняет шаг «span name». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return f"{self.__class__.__name__}.llm"
 
     @property
     def temperature(self) -> float:
-        """Return the default deterministic temperature for structured stages."""
+        """Выполняет шаг «temperature». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return 0
 
     def build_prompt(self, stage_input: TInput) -> str:
-        """Build the prompt text for the LLM call."""
+        """Выполняет шаг «build prompt». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         raise NotImplementedError(
             f"{self.__class__.__name__} must implement build_prompt()"
         )
@@ -161,15 +161,15 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
         self,
         stage_input: TInput,
     ) -> str | Mapping[str, Any] | BaseModel | None:
-        """Build optional transport context for the LLM call."""
+        """Выполняет шаг «build context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return stage_input if isinstance(stage_input, (str, BaseModel)) else None
 
     def build_system_prompt(self, stage_input: TInput) -> str | None:
-        """Build an optional system prompt for the LLM call."""
+        """Выполняет шаг «build system prompt». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return None
 
     def build_trace_input(self, stage_input: TInput) -> dict[str, Any]:
-        """Build LLM trace metadata without serializing full business payloads."""
+        """Выполняет шаг «build trace input». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return {
             "prompt_name": self.prompt_name,
             "prompt_version": self.prompt_version,
@@ -177,19 +177,19 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
         }
 
     def build_request_kwargs(self, stage_input: TInput) -> dict[str, Any] | None:
-        """Build optional provider request kwargs for the LLM call."""
+        """Выполняет шаг «build request kwargs». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return None
 
     def validate_payload(self, payload: TPayload) -> None:
-        """Validate the parsed LLM payload before post-processing."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         return None
 
     def postprocess(self, result: LLMRunResult[TPayload]) -> TOutput:
-        """Convert the generic LLM result into the stage-specific output."""
+        """Выполняет шаг «postprocess». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return cast(TOutput, result.payload)
 
     def _resolve_output_model(self) -> type[TPayload]:
-        """Return the configured output model for the new BaseLLMStage contract."""
+        """Находит нужное поле внутри вложенной структуры данных. Это похоже на движение по адресу: шаг за шагом до конкретного значения."""
         if self.output_model is None:
             raise NotImplementedError(
                 f"{self.__class__.__name__} must define output_model"
@@ -197,34 +197,34 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
         return cast(type[TPayload], self.output_model)
 
     def _build_stage_exception(self, exc: Exception) -> Exception:
-        """Preserve LLM-stage-specific errors produced by the LLM lifecycle."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return exc
 
     @property
     def prompt_path(self) -> Path:
-        """Return the resolved prompt file path used by the stage."""
+        """Выполняет шаг «prompt path». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._prompt.path
 
     @property
     def prompt_name(self) -> str:
-        """Return the prompt filename used by the stage."""
+        """Выполняет шаг «prompt name». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._prompt.name
 
     @property
     def prompt_version(self) -> str | None:
-        """Return the loaded prompt version, if any."""
+        """Выполняет шаг «prompt version». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._prompt.version
 
     @property
     def prompt_template(self) -> str:
-        """Return the loaded prompt template text."""
+        """Выполняет шаг «prompt template». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._prompt.content
 
     def _render_prompt(
         self,
         variables: dict[str, Any] | None = None,
     ) -> RenderedPrompt:
-        """Render the stage prompt through PromptManager."""
+        """Готовит человекочитаемый текст из внутренних данных. Это нужно для промптов, объяснений или финального ответа."""
         return self._prompt_manager.render(
             self.prompt_name,
             version=self.prompt_version,
@@ -233,12 +233,12 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
 
     @property
     def model_name(self) -> str | None:
-        """Return the configured model name, if any."""
+        """Выполняет шаг «model name». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._model_name
 
     @property
     def max_retries(self) -> int:
-        """Return the configured retry budget."""
+        """Выполняет шаг «max retries». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._max_retries
 
     def _execute_structured_stage(
@@ -251,7 +251,7 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
         response_model: type[TPayload],
         payload_validator: Callable[[TPayload], None] | None = None,
     ) -> LLMStageRunResult[TPayload]:
-        """Run a JSON LLM stage through the centralized runner."""
+        """Выполняет шаг «execute structured stage». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         try:
             runner_result = self._llm_runner.run_json(
                 trace_name=trace_name,
@@ -290,7 +290,7 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
     @staticmethod
     @abstractmethod
     def _default_prompt_path() -> Path:
-        """Return the default prompt path for the concrete stage."""
+        """Возвращает значение по умолчанию, чтобы этап мог работать без ручной настройки."""
 
     @abstractmethod
     def _build_failure_exception(
@@ -298,4 +298,4 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
         attempts: int,
         last_error: Exception | None,
     ) -> Exception:
-        """Build the stage-specific exception raised after retries are exhausted."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""

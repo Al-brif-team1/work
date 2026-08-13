@@ -1,4 +1,4 @@
-"""Prompt architecture contract tests for active LLM prompts."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ PROMPT_DIR = Path(__file__).resolve().parents[1] / "prompts"
 
 
 class TestPromptContract(unittest.TestCase):
-    """Validate the shared prompt-file contract."""
+    """Класс «TestPromptContract» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_all_prompt_files_use_front_matter_and_system_user_sections(self) -> None:
         manager = PromptManager([PROMPT_DIR])
@@ -61,7 +61,7 @@ class TestPromptContract(unittest.TestCase):
 
     @staticmethod
     def _declared_variables(raw_variables: object) -> set[str]:
-        """Parse the comma-separated variable metadata used by prompt files."""
+        """Выполняет шаг «declared variables». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not isinstance(raw_variables, str):
             raise AssertionError("prompt variables metadata must be a string")
         return {

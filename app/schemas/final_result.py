@@ -1,4 +1,4 @@
-"""Final pipeline result models."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ ConfidenceValue = Literal["low", "medium", "high"]
 
 
 class BriefExtractedFields(BaseModel):
-    """Product-facing extracted fields for one customer brief."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     goal: str | None = None
     expected_result: str | None = None
@@ -32,7 +32,7 @@ class BriefExtractedFields(BaseModel):
 
 
 class BriefAssessmentSummary(BaseModel):
-    """Product-facing assessment summary for one customer brief."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     recommendation: RecommendationValue
     confidence: ConfidenceValue
@@ -43,7 +43,7 @@ class BriefAssessmentSummary(BaseModel):
 
 
 class BriefAnalysisResult(BaseModel):
-    """Structured JSON returned by the working brief analysis pipeline."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     summary: str
     extracted_fields: BriefExtractedFields
@@ -57,7 +57,7 @@ class BriefAnalysisResult(BaseModel):
     @field_validator("summary", "customer_response_draft")
     @classmethod
     def _strip_required_text(cls, value: str) -> str:
-        """Reject blank required user-facing fields."""
+        """Выполняет шаг «strip required text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         value = value.strip()
         if not value:
             raise ValueError("must not be empty")

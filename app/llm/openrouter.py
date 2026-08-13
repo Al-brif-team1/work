@@ -9,10 +9,10 @@ from app.llm.client import LLMClient, Message
 
 
 class OpenRouterLLMClient(LLMClient):
-    """OpenRouter implementation backed by the official OpenAI SDK."""
+    """Класс «OpenRouterLLMClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, settings: Settings) -> None:
-        """Create a client configured for the OpenRouter OpenAI-compatible API."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         self._model = settings.openrouter_model
         self._client = OpenAI(
             api_key=settings.openrouter_api_key,
@@ -24,7 +24,7 @@ class OpenRouterLLMClient(LLMClient):
         messages: Sequence[Message],
         **kwargs: Any,
     ) -> str:
-        """Return the first response message content as text."""
+        """Выполняет шаг «generate». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         response = self._client.chat.completions.create(
             model=self._model,
             messages=list(messages),
@@ -39,7 +39,7 @@ class OpenRouterLLMClient(LLMClient):
         messages: Sequence[Message],
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Request a JSON object response and decode it into a dictionary."""
+        """Выполняет шаг «generate json». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         response_format = kwargs.pop("response_format", {"type": "json_object"})
         response_text = self.generate(
             messages=messages,
@@ -62,7 +62,7 @@ class OpenRouterLLMClient(LLMClient):
         messages: Sequence[Message],
         **kwargs: Any,
     ) -> Iterable[str]:
-        """Yield non-empty content deltas from a streaming response."""
+        """Выполняет шаг «stream». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         stream = self._client.chat.completions.create(
             model=self._model,
             messages=list(messages),

@@ -1,4 +1,4 @@
-"""Central execution layer for LLM requests."""
+"""Модуль инфраструктуры LLM. Он отделяет работу с ИИ-моделью от бизнес-логики, чтобы роботы конвейера получали ответы единым способом."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ _RUSSIAN_LANGUAGE_INSTRUCTION = (
 
 
 class LLMTokenUsage(BaseModel):
-    """Best-effort token accounting for a single LLM request."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
@@ -36,7 +36,7 @@ class LLMTokenUsage(BaseModel):
 
 
 class LLMRunResult(BaseModel, Generic[TPayload]):
-    """Structured result returned by the shared LLM runner."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     payload: TPayload
     raw_response: dict[str, Any]
@@ -55,23 +55,23 @@ class LLMRunResult(BaseModel, Generic[TPayload]):
 
 
 class LLMRunnerError(RuntimeError):
-    """Base error raised by the shared LLM runner."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class LLMRunnerTimeoutError(LLMRunnerError):
-    """Raised when the provider call exceeds the configured timeout."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class LLMRunnerProviderError(LLMRunnerError):
-    """Raised when the underlying provider call fails."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class LLMRunnerStructuredOutputError(LLMRunnerError):
-    """Raised when the LLM response cannot be validated as structured output."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class LLMRunner:
-    """Execute structured LLM requests with retries, tracing, and telemetry."""
+    """Класс «LLMRunner» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(
         self,
@@ -82,7 +82,7 @@ class LLMRunner:
         timeout_seconds: float | None = 60.0,
         model_name: str | None = None,
     ) -> None:
-        """Create a runner around an existing provider-independent client."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         if max_retries <= 0:
             raise ValueError("max_retries must be greater than zero")
         if timeout_seconds is not None and timeout_seconds <= 0:
@@ -107,7 +107,7 @@ class LLMRunner:
         temperature: float = 0,
         request_kwargs: dict[str, Any] | None = None,
     ) -> LLMRunResult[TPayload]:
-        """Execute a JSON LLM call and validate it into a Pydantic model."""
+        """Выполняет шаг «run json». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         trace_input = trace_input or {}
         request_kwargs = request_kwargs or {}
         normalized_messages = self._ensure_json_instruction(
@@ -246,12 +246,7 @@ class LLMRunner:
         temperature: float = 0,
         request_kwargs: dict[str, Any] | None = None,
     ) -> LLMRunResult[TPayload]:
-        """Run a prompt and validate the structured model response.
-
-        ``prompt`` is provided by the calling AI component. ``context`` is
-        serialized as transport data only; prompt selection and business
-        decisions stay outside the runner.
-        """
+        """[ЗАПУСК РОБОТА] Главная команда этапа: она заставляет этого робота выполнить свою работу и вернуть результат в формате, который понимает следующий участок конвейера."""
         messages = self._build_messages(
             prompt=prompt,
             context=context,
@@ -275,7 +270,7 @@ class LLMRunner:
         temperature: float,
         request_kwargs: dict[str, Any],
     ) -> dict[str, Any]:
-        """Call the provider client and normalize provider exceptions."""
+        """Выполняет шаг «call generate json». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         kwargs = {"temperature": temperature, **request_kwargs}
         if self._timeout_seconds is not None and "timeout" not in kwargs:
             kwargs["timeout"] = self._timeout_seconds
@@ -310,7 +305,7 @@ class LLMRunner:
         request_kwargs: dict[str, Any],
         response_model: type[BaseModel],
     ) -> dict[str, Any]:
-        """Ask providers to follow the Pydantic schema when they support it."""
+        """Выполняет шаг «with json schema response format». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if "response_format" in request_kwargs:
             return dict(request_kwargs)
 
@@ -335,7 +330,7 @@ class LLMRunner:
         context: str | Mapping[str, Any] | BaseModel | None,
         system_prompt: str | None,
     ) -> tuple[Message, ...]:
-        """Build provider messages from a generic prompt and transport context."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         prompt = prompt.strip()
         if not prompt:
             raise ValueError("prompt must not be empty")
@@ -369,7 +364,7 @@ class LLMRunner:
 
     @staticmethod
     def _serialize_context(context: str | Mapping[str, Any] | BaseModel) -> str:
-        """Serialize generic context without knowing its business meaning."""
+        """Выполняет шаг «serialize context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if isinstance(context, str):
             serialized = context.strip()
             if not serialized:
@@ -387,7 +382,7 @@ class LLMRunner:
         *,
         response_model: type[BaseModel],
     ) -> tuple[Message, ...]:
-        """Satisfy JSON-mode providers and show the model the exact schema."""
+        """Выполняет шаг «ensure json instruction». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         schema_instruction = (
             f"{_JSON_OBJECT_INSTRUCTION}\n"
             f"{_RUSSIAN_LANGUAGE_INSTRUCTION}\n"
@@ -422,7 +417,7 @@ class LLMRunner:
         response_model: type[TPayload],
         payload_validator: Callable[[TPayload], None] | None,
     ) -> TPayload:
-        """Validate raw provider JSON against the expected Pydantic model."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         try:
             payload = response_model.model_validate(raw_response)
             if payload_validator is not None:
@@ -439,7 +434,7 @@ class LLMRunner:
         messages: Sequence[Message],
         raw_response: dict[str, Any],
     ) -> LLMTokenUsage:
-        """Build exact provider usage when present, otherwise a rough estimate."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         usage = raw_response.get("usage")
         if isinstance(usage, dict):
             prompt_tokens = _optional_int(usage.get("prompt_tokens"))
@@ -468,7 +463,7 @@ class LLMRunner:
 
     @staticmethod
     def _build_provider_metadata(raw_response: dict[str, Any]) -> dict[str, Any]:
-        """Extract provider metadata from raw JSON when the client exposes it."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         metadata: dict[str, Any] = {}
         for key in ("id", "model", "provider", "created", "system_fingerprint"):
             if key in raw_response:
@@ -477,7 +472,7 @@ class LLMRunner:
 
     @staticmethod
     def _extract_trace_id(trace: object) -> str | None:
-        """Best-effort extraction of a tracing identifier."""
+        """Выполняет шаг «extract trace id». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         for attribute in ("id", "trace_id", "observation_id"):
             value = getattr(trace, attribute, None)
             if value:
@@ -486,14 +481,14 @@ class LLMRunner:
 
 
 def _estimate_text_tokens(text: str) -> int:
-    """Estimate tokens when the provider client does not expose usage."""
+    """Выполняет шаг «estimate text tokens». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     if not text:
         return 0
     return max(1, len(text) // 4)
 
 
 def _optional_int(value: object) -> int | None:
-    """Return an int for provider usage fields when possible."""
+    """Выполняет шаг «optional int». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     if value is None:
         return None
     try:

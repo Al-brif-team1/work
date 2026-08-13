@@ -1,4 +1,4 @@
-"""Shared immutable-by-copy AI pipeline context model."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from app.schemas.self_check import SelfCheckResult
 
 
 class PipelineInputState(BaseModel):
-    """Initial user input carried through the pipeline."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     brief_input: BriefInput
 
@@ -27,17 +27,17 @@ class PipelineInputState(BaseModel):
 
     @property
     def original_text(self) -> str:
-        """Return the original brief text."""
+        """Выполняет шаг «original text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.brief_input.original_text
 
     @property
     def normalized_text(self) -> str:
-        """Return the normalized brief text."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return self.brief_input.normalized_text
 
 
 class RetrievalState(BaseModel):
-    """Retrieved knowledge context accumulated by pipeline stages."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     results: list[SearchResult] = Field(default_factory=list)
 
@@ -45,7 +45,7 @@ class RetrievalState(BaseModel):
 
 
 class PipelineResults(BaseModel):
-    """Structured outputs produced by pipeline stages."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     extracted_brief: ExtractedBrief | None = None
     extraction_result: ExtractionResult | None = None
@@ -60,7 +60,7 @@ class PipelineResults(BaseModel):
 
 
 class ResponseState(BaseModel):
-    """Final user-facing response produced by the pipeline."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     text: str | None = None
     payload: dict[str, Any] | None = None
@@ -70,7 +70,7 @@ class ResponseState(BaseModel):
     @field_validator("text")
     @classmethod
     def _strip_text(cls, value: str | None) -> str | None:
-        """Normalize optional final response text."""
+        """Выполняет шаг «strip text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if value is None:
             return None
         value = value.strip()
@@ -80,7 +80,7 @@ class ResponseState(BaseModel):
 
 
 class PipelineTechnicalState(BaseModel):
-    """Non-business metadata and technical details for pipeline execution."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     metadata: dict[str, Any] = Field(default_factory=dict)
     configuration: CriteriaConfig | None = None
@@ -90,7 +90,7 @@ class PipelineTechnicalState(BaseModel):
 
 
 class AIContext(BaseModel):
-    """Primary immutable-by-copy state object passed between pipeline stages."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     inputs: PipelineInputState
     retrieval: RetrievalState = Field(default_factory=RetrievalState)
@@ -102,87 +102,87 @@ class AIContext(BaseModel):
 
     @property
     def brief_input(self) -> BriefInput:
-        """Return the normalized brief input."""
+        """Выполняет шаг «brief input». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.inputs.brief_input
 
     @property
     def original_text(self) -> str:
-        """Return the original brief text."""
+        """Выполняет шаг «original text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.inputs.original_text
 
     @property
     def normalized_text(self) -> str:
-        """Return the normalized brief text."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return self.inputs.normalized_text
 
     @property
     def extracted_brief(self) -> ExtractedBrief | None:
-        """Return extracted structured facts, if available."""
+        """Выполняет шаг «extracted brief». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.results.extracted_brief
 
     @property
     def extraction_result(self) -> ExtractionResult | None:
-        """Return extractor output, if available."""
+        """Выполняет шаг «extraction result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.results.extraction_result
 
     @property
     def completeness_result(self) -> CompletenessResult | None:
-        """Return completeness output, if available."""
+        """Выполняет шаг «completeness result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.results.completeness_result
 
     @property
     def assessment_result(self) -> AssessmentResult | None:
-        """Return unified assessment output, if available."""
+        """Выполняет шаг «assessment result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.results.assessment_result
 
     @property
     def arbitration_result(self) -> ArbitrationResult | None:
-        """Return deterministic arbitration output, if available."""
+        """Выполняет шаг «arbitration result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.results.arbitration_result
 
     @property
     def clarification_result(self) -> QuestionGenerationResult | None:
-        """Return clarification-question output, if available."""
+        """Выполняет шаг «clarification result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.results.clarification_result
 
     @property
     def mvp_planning_result(self) -> MVPPlanningResult | None:
-        """Return MVP planning output, if available."""
+        """Выполняет шаг «mvp planning result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.results.mvp_planning_result
 
     @property
     def final_response_text(self) -> str | None:
-        """Return the final user-facing response text, if available."""
+        """Выполняет шаг «final response text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.response.text
 
     @property
     def final_response_payload(self) -> dict[str, Any] | None:
-        """Return the final user-facing response payload, if available."""
+        """Выполняет шаг «final response payload». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.response.payload
 
     @property
     def self_check_result(self) -> SelfCheckResult | None:
-        """Return self-check output, if available."""
+        """Выполняет шаг «self check result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.results.self_check_result
 
     @property
     def retrieved_context(self) -> list[SearchResult]:
-        """Return retrieved knowledge context."""
+        """Выполняет шаг «retrieved context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.retrieval.results
 
     @property
     def metadata(self) -> dict[str, Any]:
-        """Return request-level metadata."""
+        """Выполняет шаг «metadata». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.technical.metadata
 
     @property
     def configuration(self) -> CriteriaConfig | None:
-        """Return pipeline configuration snapshot, if available."""
+        """Выполняет шаг «configuration». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.technical.configuration
 
     @property
     def stage_metadata(self) -> dict[str, dict[str, Any]]:
-        """Return technical metadata collected by stages."""
+        """Выполняет шаг «stage metadata». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.technical.stage_metadata
 
     @classmethod
@@ -193,7 +193,7 @@ class AIContext(BaseModel):
         metadata: dict[str, Any] | None = None,
         configuration: CriteriaConfig | None = None,
     ) -> "AIContext":
-        """Create a context from the normalized brief input."""
+        """Выполняет шаг «from brief». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return cls(
             inputs=PipelineInputState(brief_input=brief_input),
             technical=PipelineTechnicalState(
@@ -203,7 +203,7 @@ class AIContext(BaseModel):
         )
 
     def with_extraction_result(self, result: ExtractionResult) -> "AIContext":
-        """Return a context updated with extraction output."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self._with_results(
             update={
                 "extraction_result": result,
@@ -212,44 +212,44 @@ class AIContext(BaseModel):
         )
 
     def with_extracted_brief(self, extracted_brief: ExtractedBrief) -> "AIContext":
-        """Return a context updated with extracted structured data."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self._with_results(update={"extracted_brief": extracted_brief})
 
     def with_completeness_result(self, result: CompletenessResult) -> "AIContext":
-        """Return a context updated with completeness output."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self._with_results(update={"completeness_result": result})
 
     def with_assessment_result(self, result: AssessmentResult) -> "AIContext":
-        """Return a context updated with unified assessment output."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self._with_results(update={"assessment_result": result})
 
     def with_assessment(self, result: AssessmentResult) -> "AIContext":
-        """Return a context updated with unified assessment output."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self.with_assessment_result(result)
 
     def with_arbitration_result(self, result: ArbitrationResult) -> "AIContext":
-        """Return a context updated with deterministic arbitration output."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self._with_results(update={"arbitration_result": result})
 
     def with_clarification_result(
         self,
         result: QuestionGenerationResult,
     ) -> "AIContext":
-        """Return a context updated with clarification questions."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self._with_results(update={"clarification_result": result})
 
     def with_mvp_planning_result(self, result: MVPPlanningResult) -> "AIContext":
-        """Return a context updated with MVP planning output."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self._with_results(update={"mvp_planning_result": result})
 
     def with_retrieved_context(self, results: list[SearchResult]) -> "AIContext":
-        """Return a context with retrieved knowledge context replaced."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self.model_copy(
             update={"retrieval": RetrievalState(results=list(results))}
         )
 
     def append_retrieved_context(self, results: list[SearchResult]) -> "AIContext":
-        """Return a context with additional retrieved knowledge context."""
+        """Выполняет шаг «append retrieved context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.model_copy(
             update={
                 "retrieval": RetrievalState(
@@ -263,7 +263,7 @@ class AIContext(BaseModel):
         response_text: str,
         response_payload: dict[str, Any] | None = None,
     ) -> "AIContext":
-        """Return a context updated with the final user-facing response."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self.model_copy(
             update={
                 "response": ResponseState(
@@ -274,11 +274,11 @@ class AIContext(BaseModel):
         )
 
     def with_self_check_result(self, result: SelfCheckResult) -> "AIContext":
-        """Return a context updated with self-check output."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self._with_results(update={"self_check_result": result})
 
     def with_metadata(self, **metadata: Any) -> "AIContext":
-        """Return a context with merged metadata."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self.model_copy(
             update={
                 "technical": self.technical.model_copy(
@@ -288,7 +288,7 @@ class AIContext(BaseModel):
         )
 
     def with_stage_metadata(self, stage_name: str, **metadata: Any) -> "AIContext":
-        """Return a context with merged technical metadata for one stage."""
+        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         stage_name = stage_name.strip()
         if not stage_name:
             raise ValueError("stage_name must not be empty")
@@ -308,7 +308,7 @@ class AIContext(BaseModel):
         )
 
     def _with_results(self, update: dict[str, Any]) -> "AIContext":
-        """Return a context with updated stage results."""
+        """Выполняет шаг «with results». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.model_copy(
             update={"results": self.results.model_copy(update=update)}
         )

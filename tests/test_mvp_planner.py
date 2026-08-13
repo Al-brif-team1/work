@@ -1,4 +1,4 @@
-"""Tests for the MVP planner."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from app.schemas import (
 
 
 class RecordingTraceContext:
-    """Simple trace/span context used by unit tests."""
+    """Класс «RecordingTraceContext» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.updates: list[dict[str, Any]] = []
@@ -39,7 +39,7 @@ class RecordingTraceContext:
 
 
 class RecordingTracingClient:
-    """Tracing double that records trace and span updates."""
+    """Класс «RecordingTracingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.trace = RecordingTraceContext()
@@ -62,7 +62,7 @@ class RecordingTracingClient:
 
 
 class FakeLLMClient:
-    """Deterministic LLM client used for MVP planner unit tests."""
+    """Класс «FakeLLMClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, responses: list[dict[str, Any] | Exception]) -> None:
         self._responses = responses
@@ -84,14 +84,14 @@ class FakeLLMClient:
 
 
 def make_brief_input() -> BriefInput:
-    """Create a brief input for tests."""
+    """Выполняет шаг «make brief input». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return BriefInputFactory().from_text(
         "Build a customer portal with authentication and reporting."
     )
 
 
 def make_extracted_brief() -> ExtractedBrief:
-    """Create a minimal extracted brief for tests."""
+    """Выполняет шаг «make extracted brief». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return ExtractedBrief(
         project_goal=ExtractedFact(
             status=FactStatus.explicit,
@@ -142,7 +142,7 @@ def make_extracted_brief() -> ExtractedBrief:
 
 
 def make_assessment_result() -> AssessmentResult:
-    """Create a unified assessment result with traceable planning inputs."""
+    """Выполняет шаг «make assessment result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return AssessmentResult(
         criterion_evaluations=[
             CriterionEvaluation(
@@ -188,7 +188,7 @@ def make_assessment_result() -> AssessmentResult:
 
 
 def make_empty_assessment_result() -> AssessmentResult:
-    """Create empty assessment output for planner branch tests."""
+    """Выполняет шаг «make empty assessment result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return AssessmentResult(
         criterion_evaluations=[],
         risks=[],
@@ -215,7 +215,7 @@ def make_empty_assessment_result() -> AssessmentResult:
 
 
 def make_arbitration_result(status: DecisionStatus) -> ArbitrationResult:
-    """Create an arbitration result for tests."""
+    """Выполняет шаг «make arbitration result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return ArbitrationResult(
         final_status=status,
         reasons=["Synthetic test decision."],
@@ -227,7 +227,7 @@ def make_arbitration_result(status: DecisionStatus) -> ArbitrationResult:
 
 
 def make_valid_payload() -> dict[str, Any]:
-    """Return a valid MVP planning payload."""
+    """Выполняет шаг «make valid payload». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return {
         "core_goal": "Build a customer portal",
         "keep": [
@@ -251,7 +251,7 @@ def make_valid_payload() -> dict[str, Any]:
 
 
 class TestMVPPlannerStage(unittest.TestCase):
-    """Unit tests for the MVP planner."""
+    """Класс «TestMVPPlannerStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_does_not_call_llm_when_status_is_not_simplify(self) -> None:
         llm_client = FakeLLMClient([])

@@ -1,4 +1,4 @@
-"""Brief input loading and normalization."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from app.input.brief_input import (
     BriefInputError,

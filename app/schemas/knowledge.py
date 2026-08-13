@@ -1,4 +1,4 @@
-"""Knowledge base data models."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DocumentMetadata(BaseModel):
-    """Metadata attached to a knowledge base document."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     source: str | None = None
     title: str | None = None
@@ -21,7 +21,7 @@ class DocumentMetadata(BaseModel):
 
 
 class Document(BaseModel):
-    """A document stored in or retrieved from a vector store."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     id: str
     text: str
@@ -31,7 +31,7 @@ class Document(BaseModel):
 
 
 class SearchResult(BaseModel):
-    """A ranked similarity-search result."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     document: Document
     score: float

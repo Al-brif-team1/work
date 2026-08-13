@@ -1,4 +1,4 @@
-"""Unified assessment result models."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from app.schemas.risk import Risk
 
 
 class AssessmentRecommendation(str, Enum):
-    """Non-binding analytical recommendation consumed by Deterministic Arbiter."""
+    """Класс «AssessmentRecommendation» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     ready_for_arbitration = "ready_for_arbitration"
     needs_clarification = "needs_clarification"
@@ -20,7 +20,7 @@ class AssessmentRecommendation(str, Enum):
 
 
 class AssessmentEvidence(BaseModel):
-    """Evidence fragment used to support an assessment conclusion."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     source: str
     quote: str
@@ -34,7 +34,7 @@ class AssessmentEvidence(BaseModel):
     @field_validator("source", "quote")
     @classmethod
     def _strip_required_text(cls, value: str) -> str:
-        """Reject empty evidence identifiers and fragments."""
+        """Выполняет шаг «strip required text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         value = value.strip()
         if not value:
             raise ValueError("evidence source and quote must not be empty")
@@ -42,7 +42,7 @@ class AssessmentEvidence(BaseModel):
 
 
 class AssessmentTechnicalInfo(BaseModel):
-    """Technical metadata about a future assessment run."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     attempts: int = 0
     prompt_name: str | None = None
@@ -61,7 +61,7 @@ class AssessmentTechnicalInfo(BaseModel):
 
 
 class AssessmentPayload(BaseModel):
-    """Raw structured payload expected from the future Assessment LLM stage."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     criterion_evaluations: list[CriterionEvaluation] = Field(default_factory=list)
     risks: list[Risk] = Field(default_factory=list)
@@ -75,14 +75,14 @@ class AssessmentPayload(BaseModel):
 
     @model_validator(mode="after")
     def _validate_consistency(self) -> "AssessmentPayload":
-        """Keep aggregate assessment flags aligned with detailed findings."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if self.has_risks != bool(self.risks):
             raise ValueError("has_risks must match whether risks are present")
         return self
 
 
 class AssessmentResult(BaseModel):
-    """Unified criteria and risk assessment output consumed by arbitration."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     criterion_evaluations: list[CriterionEvaluation] = Field(default_factory=list)
     risks: list[Risk] = Field(default_factory=list)
@@ -99,7 +99,7 @@ class AssessmentResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_consistency(self) -> "AssessmentResult":
-        """Keep aggregate assessment flags aligned with detailed findings."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if self.has_risks != bool(self.risks):
             raise ValueError("has_risks must match whether risks are present")
         return self

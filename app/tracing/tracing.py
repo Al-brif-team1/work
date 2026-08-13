@@ -1,4 +1,4 @@
-"""Tracing abstractions and Langfuse integration."""
+"""Модуль наблюдаемости. Он собирает технические следы выполнения, чтобы было проще понять, какой робот что сделал."""
 
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -11,22 +11,22 @@ from app.config import Settings, get_settings
 
 
 class TraceContext(Protocol):
-    """Minimal trace/span context exposed to application code."""
+    """Класс «TraceContext» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def update(self, **kwargs: Any) -> None:
-        """Update trace or span attributes."""
+        """Выполняет шаг «update». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         ...
 
 
 class TracingClient(Protocol):
-    """Provider-independent tracing interface."""
+    """Класс «TracingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def create_trace(
         self,
         name: str,
         **kwargs: Any,
     ) -> ContextManager[TraceContext | None]:
-        """Create a trace context."""
+        """Выполняет шаг «create trace». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         ...
 
     def create_span(
@@ -34,19 +34,19 @@ class TracingClient(Protocol):
         name: str,
         **kwargs: Any,
     ) -> ContextManager[TraceContext | None]:
-        """Create a span context."""
+        """Выполняет шаг «create span». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         ...
 
     def flush(self) -> None:
-        """Flush buffered tracing events."""
+        """Выполняет шаг «flush». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         ...
 
 
 class LangfuseTracingClient:
-    """Langfuse-backed implementation of the tracing interface."""
+    """Класс «LangfuseTracingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, settings: Settings) -> None:
-        """Initialize the Langfuse client from application settings."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         self._client = Langfuse(
             public_key=settings.langfuse_public_key,
             secret_key=settings.langfuse_secret_key,
@@ -59,7 +59,7 @@ class LangfuseTracingClient:
         name: str,
         **kwargs: Any,
     ) -> Iterator[TraceContext | None]:
-        """Create a top-level Langfuse observation context."""
+        """Выполняет шаг «create trace». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         with self._client.start_as_current_observation(
             as_type="chain",
             name=name,
@@ -73,7 +73,7 @@ class LangfuseTracingClient:
         name: str,
         **kwargs: Any,
     ) -> Iterator[TraceContext | None]:
-        """Create a nested Langfuse span context."""
+        """Выполняет шаг «create span». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         with self._client.start_as_current_observation(
             as_type="span",
             name=name,
@@ -82,12 +82,12 @@ class LangfuseTracingClient:
             yield span
 
     def flush(self) -> None:
-        """Flush buffered Langfuse events."""
+        """Выполняет шаг «flush». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         self._client.flush()
 
 
 class NoOpTracingClient:
-    """Tracing client used when Langfuse credentials are not configured."""
+    """Класс «NoOpTracingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     @contextmanager
     def create_trace(
@@ -95,7 +95,7 @@ class NoOpTracingClient:
         name: str,
         **kwargs: Any,
     ) -> Iterator[TraceContext | None]:
-        """Create an inert trace context."""
+        """Выполняет шаг «create trace». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         yield None
 
     @contextmanager
@@ -104,20 +104,20 @@ class NoOpTracingClient:
         name: str,
         **kwargs: Any,
     ) -> Iterator[TraceContext | None]:
-        """Create an inert span context."""
+        """Выполняет шаг «create span». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         yield None
 
     def flush(self) -> None:
-        """No-op flush for disabled tracing."""
+        """Выполняет шаг «flush». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return None
 
 
 class TracingClientFactory:
-    """Factory for creating the configured tracing client."""
+    """Класс «TracingClientFactory» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     @staticmethod
     def create(settings: Settings) -> TracingClient:
-        """Create Langfuse tracing or a no-op fallback."""
+        """Выполняет шаг «create». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not settings.langfuse_public_key or not settings.langfuse_secret_key:
             return NoOpTracingClient()
 
@@ -126,5 +126,5 @@ class TracingClientFactory:
 
 @lru_cache(maxsize=1)
 def get_tracing_client() -> TracingClient:
-    """Return the cached tracing client."""
+    """Возвращает уже подготовленный объект или настройку, чтобы остальные части проекта использовали единый источник."""
     return TracingClientFactory.create(settings=get_settings())

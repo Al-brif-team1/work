@@ -1,4 +1,4 @@
-"""Models for clarification question generation."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ClarificationQuestion(BaseModel):
-    """A single clarification question."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     question: str
     related_field: str
@@ -20,7 +20,7 @@ class ClarificationQuestion(BaseModel):
     @field_validator("question", "reason", "related_field")
     @classmethod
     def _strip_text(cls, value: str) -> str:
-        """Normalize user-facing text fields."""
+        """Выполняет шаг «strip text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         value = value.strip()
         if not value:
             raise ValueError("must not be empty")
@@ -30,7 +30,7 @@ class ClarificationQuestion(BaseModel):
     @field_validator("priority")
     @classmethod
     def _validate_priority(cls, value: int) -> int:
-        """Ensure priority is a positive integer."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if value <= 0:
             raise ValueError("priority must be greater than zero")
 
@@ -38,7 +38,7 @@ class ClarificationQuestion(BaseModel):
 
 
 class QuestionGenerationTechnicalInfo(BaseModel):
-    """Technical metadata about question generation."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     llm_invoked: bool
     attempts: int
@@ -55,7 +55,7 @@ class QuestionGenerationTechnicalInfo(BaseModel):
 
 
 class QuestionGenerationResult(BaseModel):
-    """Structured result produced by the question generator."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     questions: list[ClarificationQuestion] = Field(default_factory=list)
     summary: str | None = None

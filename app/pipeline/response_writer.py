@@ -1,4 +1,4 @@
-"""Deterministic customer response drafting."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ from app.tracing.tracing import NoOpTracingClient, TracingClient
 
 
 class ResponseWriterError(RuntimeError):
-    """Raised when a customer response draft cannot be generated."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class ResponseWriterStage(BaseStage[AIContext, AIContext]):
-    """Generate a concise customer response draft from completed analysis."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Секретарь-Писатель. Он детерминированным кодом собирает готовый ответ из деталей конструктора. Этот этап работает как детерминированный робот: обычный код, без творческих догадок ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseStage, поэтому он умеет работать в нашем конвейере."""
 
     def __init__(
         self,
@@ -23,7 +23,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         result_builder: BriefAnalysisResultBuilder | None = None,
         tracing_client: TracingClient | None = None,
     ) -> None:
-        """Initialize the deterministic response writer."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         super().__init__(
             stage_name=self.__class__.__name__,
             tracing_client=tracing_client or NoOpTracingClient(),
@@ -31,7 +31,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         self._result_builder = result_builder or BriefAnalysisResultBuilder()
 
     def write_context(self, context: AIContext) -> AIContext:
-        """Return context enriched with final response text and public payload."""
+        """Выполняет шаг «write context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         response_text = self._build_response_text(context)
         context_with_text = context.with_final_response(response_text)
         payload = self._result_builder.build(context_with_text)
@@ -41,19 +41,19 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         )
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Run this stage using the common AIContext pipeline contract."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return self.run(context)
 
     def _run(self, stage_input: AIContext) -> AIContext:
-        """Run deterministic response writing."""
+        """[ЗАПУСК РОБОТА] Главная команда этапа: она заставляет этого робота выполнить свою работу и вернуть результат в формате, который понимает следующий участок конвейера."""
         return self.write_context(stage_input)
 
     def _build_stage_exception(self, exc: Exception) -> Exception:
-        """Preserve response-writer-specific errors."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return exc
 
     def _build_trace_input(self, stage_input: AIContext) -> dict[str, Any]:
-        """Build safe trace metadata for response drafting."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return {
             "has_arbitration_result": stage_input.arbitration_result is not None,
             "has_questions": bool(
@@ -67,14 +67,14 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         }
 
     def _build_trace_output(self, stage_output: AIContext) -> dict[str, Any]:
-        """Build safe trace output for response drafting."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return {
             "status": "success",
             "response_length": len(stage_output.final_response_text or ""),
         }
 
     def _build_response_text(self, context: AIContext) -> str:
-        """Build a customer-facing draft without changing business decisions."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         if context.arbitration_result is None:
             raise ResponseWriterError("Response writer requires arbitration_result")
 
@@ -93,7 +93,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         raise ResponseWriterError(f"Unsupported arbitration status: {status}")
 
     def _accept_response(self, context: AIContext) -> str:
-        """Build a draft for an acceptable project."""
+        """Выполняет шаг «accept response». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         summary = self._summary(context)
         reasons = self._format_reasons(context)
         return (
@@ -107,7 +107,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         )
 
     def _clarify_response(self, context: AIContext) -> str:
-        """Build a draft for a project that needs clarification."""
+        """Выполняет шаг «clarify response». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         questions = self._format_questions(context)
         return (
             "Здравствуйте!\n\n"
@@ -119,7 +119,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         )
 
     def _simplify_response(self, context: AIContext) -> str:
-        """Build a draft for a project that needs an MVP scope."""
+        """Выполняет шаг «simplify response». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         mvp = self._format_mvp(context)
         questions = self._format_questions(context, optional=True)
         question_block = f"\n\nДополнительно нужно уточнить:\n{questions}" if questions else ""
@@ -133,7 +133,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         )
 
     def _mentor_review_response(self, context: AIContext) -> str:
-        """Build a draft for a project that requires mentor expertise."""
+        """Выполняет шаг «mentor review response». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         reasons = self._format_reasons(context)
         questions = self._format_questions(context, optional=True)
         question_block = f"\n\nВопросы для уточнения:\n{questions}" if questions else ""
@@ -147,7 +147,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         )
 
     def _reject_response(self, context: AIContext) -> str:
-        """Build a draft for a project that does not fit the program."""
+        """Выполняет шаг «reject response». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         reasons = self._format_reasons(context)
         return (
             "Здравствуйте!\n\n"
@@ -160,7 +160,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         )
 
     def _summary(self, context: AIContext) -> str:
-        """Return the best available project summary."""
+        """Выполняет шаг «summary». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if context.assessment_result and context.assessment_result.summary:
             return context.assessment_result.summary
         if context.extracted_brief and context.extracted_brief.project_goal.value:
@@ -168,7 +168,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         return "описание требует дополнительного уточнения"
 
     def _format_reasons(self, context: AIContext) -> str:
-        """Format arbitration reasons into a readable block."""
+        """Выполняет шаг «format reasons». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         reasons = (
             context.arbitration_result.reasons
             if context.arbitration_result is not None
@@ -179,7 +179,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         return "Основания оценки:\n" + "\n".join(f"- {item}" for item in reasons) + "\n\n"
 
     def _format_questions(self, context: AIContext, *, optional: bool = False) -> str:
-        """Format clarification questions if they were generated."""
+        """Выполняет шаг «format questions». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         questions = (
             context.clarification_result.questions
             if context.clarification_result is not None
@@ -190,7 +190,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         return "\n".join(f"- {item.question}" for item in questions)
 
     def _format_mvp(self, context: AIContext) -> str:
-        """Format MVP plan if available."""
+        """Выполняет шаг «format mvp». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         planning = context.mvp_planning_result
         if planning is None or planning.plan is None:
             return (

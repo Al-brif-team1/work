@@ -1,4 +1,4 @@
-"""Tests for centralized prompt loading."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from app.prompts import (
 
 
 class TestPromptManager(unittest.TestCase):
-    """Unit tests for PromptManager."""
+    """Класс «TestPromptManager» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def tearDown(self) -> None:
         clear_prompt_manager_cache()

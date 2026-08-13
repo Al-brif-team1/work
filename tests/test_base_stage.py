@@ -1,4 +1,4 @@
-"""Tests for the common BaseStage lifecycle."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from app.tracing.tracing import NoOpTracingClient
 
 
 class RecordingTraceContext:
-    """Trace context double that records updates."""
+    """Класс «RecordingTraceContext» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.updates: list[dict[str, Any]] = []
@@ -22,7 +22,7 @@ class RecordingTraceContext:
 
 
 class RecordingTracingClient:
-    """Tracing client double used by BaseStage tests."""
+    """Класс «RecordingTracingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.trace = RecordingTraceContext()
@@ -42,18 +42,18 @@ class RecordingTracingClient:
 
 
 class UppercaseStage(BaseStage[str, str]):
-    """Simple non-LLM stage for lifecycle tests."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Робот этапа. Он выполняет участок конвейера «uppercase stage». Этот этап работает как детерминированный робот: обычный код, без творческих догадок ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseStage, поэтому он умеет работать в нашем конвейере."""
 
     def _run(self, stage_input: str) -> str:
         return stage_input.upper()
 
 
 class CustomStageError(RuntimeError):
-    """Stage-specific error used by tests."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class FailingStage(BaseStage[str, str]):
-    """Stage that fails through the common error boundary."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Робот этапа. Он выполняет участок конвейера «failing stage». Этот этап работает как детерминированный робот: обычный код, без творческих догадок ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseStage, поэтому он умеет работать в нашем конвейере."""
 
     def _run(self, stage_input: str) -> str:
         raise ValueError(f"bad input: {stage_input}")
@@ -63,7 +63,7 @@ class FailingStage(BaseStage[str, str]):
 
 
 class TestBaseStage(unittest.TestCase):
-    """Unit tests for BaseStage."""
+    """Класс «TestBaseStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_run_executes_stage_with_logging_and_tracing(self) -> None:
         tracing_client = RecordingTracingClient()

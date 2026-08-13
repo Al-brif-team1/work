@@ -1,8 +1,8 @@
-"""Brief input loading and normalization utilities."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
-from __future__ import annotations
+from __future__ import annotations #для анотации типов
 
-import re
+import re #Для регулярных выражений
 from pathlib import Path
 
 from app.schemas import BriefInput, BriefInputMetadata
@@ -20,14 +20,18 @@ _WRAPPER_MARKERS = {
 
 
 class BriefInputError(RuntimeError):
-    """Raised when a brief input cannot be loaded or normalized."""
+    """Собственный тип ошибки для проблем при подготовке входного брифа.
+    Наследуется от встроенного исключения RuntimeError.
+    """
 
 
 class BriefInputNormalizer:
-    """Normalize brief text without removing potentially meaningful content."""
+    """Нормализует текст входного брифа: удаляет технический шум
+    и приводит форматирование к единому виду, не изменяя содержание.
+    """
 
     def normalize(self, text: str) -> str:
-        """Normalize whitespace and remove obvious transport artefacts."""
+        """Проверяет и очищает текст брифа, возвращая нормализованную строку."""
         if text is None or not text.strip():
             raise BriefInputError("Brief text must not be empty")
 
@@ -68,10 +72,10 @@ class BriefInputNormalizer:
 
 
 class BriefInputFactory:
-    """Create validated brief input models from text or files."""
+    """Класс «BriefInputFactory» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, normalizer: BriefInputNormalizer | None = None) -> None:
-        """Initialize the factory with an optional normalizer."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         self._normalizer = normalizer or BriefInputNormalizer()
 
     def from_text(
@@ -79,7 +83,7 @@ class BriefInputFactory:
         text: str,
         metadata: BriefInputMetadata | None = None,
     ) -> BriefInput:
-        """Build a brief input model from inline text."""
+        """Выполняет шаг «from text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         original_text = self._ensure_text(text)
         normalized_text = self._normalizer.normalize(original_text)
         return BriefInput(
@@ -93,7 +97,7 @@ class BriefInputFactory:
         file_path: str | Path,
         metadata: BriefInputMetadata | None = None,
     ) -> BriefInput:
-        """Build a brief input model from a file on disk."""
+        """Выполняет шаг «from file». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         path = Path(file_path)
         try:
             original_text = path.read_text(encoding="utf-8")
@@ -113,7 +117,7 @@ class BriefInputFactory:
 
     @staticmethod
     def _ensure_text(text: str) -> str:
-        """Reject blank user input before normalization."""
+        """Выполняет шаг «ensure text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if text is None or not text.strip():
             raise BriefInputError("Brief text must not be empty")
 

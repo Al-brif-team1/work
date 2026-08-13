@@ -1,4 +1,4 @@
-"""Application CLI entry module."""
+"""Точка входа CLI-приложения. Она принимает бриф пользователя, запускает конвейер анализа и печатает итоговый ответ."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from app.pipeline import BriefAnalysisPipeline, BriefAnalysisPipelineError
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the CLI parser for brief input."""
+    """Выполняет шаг «build parser». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     parser = argparse.ArgumentParser(
         prog="ai_assistant",
         description="Analyze one project brief and return structured JSON.",
@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(argv: Sequence[str] | None = None) -> int:
-    """Execute the CLI entry point."""
+    """[ЗАПУСК РОБОТА] Главная команда этапа: она заставляет этого робота выполнить свою работу и вернуть результат в формате, который понимает следующий участок конвейера."""
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     factory = BriefInputFactory()
@@ -87,7 +87,7 @@ def run(argv: Sequence[str] | None = None) -> int:
 
 
 def main() -> int:
-    """CLI entry point for console scripts."""
+    """Выполняет шаг «main». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return run(sys.argv[1:])
 
 

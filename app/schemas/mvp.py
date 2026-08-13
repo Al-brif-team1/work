@@ -1,4 +1,4 @@
-"""Models for MVP planning results."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class MVPPlan(BaseModel):
-    """Structured MVP plan that preserves the original project goal."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     core_goal: str
     keep: list[str] = Field(default_factory=list)
@@ -22,7 +22,7 @@ class MVPPlan(BaseModel):
     @field_validator("core_goal")
     @classmethod
     def _strip_core_goal(cls, value: str) -> str:
-        """Normalize the core goal text."""
+        """Выполняет шаг «strip core goal». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         value = value.strip()
         if not value:
             raise ValueError("core_goal must not be empty")
@@ -32,7 +32,7 @@ class MVPPlan(BaseModel):
     @field_validator("keep", "remove", "simplify", "mvp_scope", "rationale")
     @classmethod
     def _normalize_text_list(cls, value: list[str]) -> list[str]:
-        """Normalize list-style plan fields."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         if not isinstance(value, list):
             raise ValueError("must be a list")
 
@@ -49,7 +49,7 @@ class MVPPlan(BaseModel):
 
 
 class MVPPlanningTechnicalInfo(BaseModel):
-    """Technical metadata for the MVP planning run."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     llm_invoked: bool
     attempts: int
@@ -65,7 +65,7 @@ class MVPPlanningTechnicalInfo(BaseModel):
 
 
 class MVPPlanningResult(BaseModel):
-    """Structured result produced by the MVP planner."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     plan: MVPPlan | None = None
     technical_info: MVPPlanningTechnicalInfo

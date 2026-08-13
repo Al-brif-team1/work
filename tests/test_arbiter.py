@@ -1,4 +1,4 @@
-"""Tests for the deterministic arbiter."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from app.schemas import (
 
 
 def write_criteria_yaml(path: Path) -> None:
-    """Write a temporary criteria config for arbiter tests."""
+    """Выполняет шаг «write criteria yaml». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     path.write_text(
         dedent(
             """
@@ -176,7 +176,7 @@ def make_fact(
     *,
     status: FactStatus = FactStatus.explicit,
 ) -> ExtractedFact:
-    """Create a compact extracted fact."""
+    """Выполняет шаг «make fact». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return ExtractedFact(
         status=status,
         value=value,
@@ -192,7 +192,7 @@ def make_completeness_result(
     missing: int = 0,
     clarification: int = 0,
 ) -> CompletenessResult:
-    """Create a completeness result with configurable counts."""
+    """Выполняет шаг «make completeness result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     missing_information = [
         CompletenessItem(
             field_key=f"missing_{index}",
@@ -242,7 +242,7 @@ def make_assessment_result(
     severities: list[RiskSeverity],
     statuses: list[CriterionEvaluationStatus],
 ) -> AssessmentResult:
-    """Create unified assessment output with configurable decision signals."""
+    """Выполняет шаг «make assessment result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     risks = [
         Risk(
             type=f"risk_{index}",
@@ -290,7 +290,7 @@ def make_assessment_result(
 
 
 class TestDeterministicArbiterStage(unittest.TestCase):
-    """Unit tests for the deterministic arbiter."""
+    """Класс «TestDeterministicArbiterStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def setUp(self) -> None:
         self.tmpdir = tempfile.TemporaryDirectory()

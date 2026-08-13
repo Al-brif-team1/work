@@ -1,4 +1,4 @@
-"""Embedding client abstraction for RAG pipelines."""
+"""Модуль базы знаний. Он готовит, индексирует и ищет справочные материалы, чтобы ИИ-этапы опирались не только на бриф, но и на контекст проекта."""
 
 from __future__ import annotations
 
@@ -11,33 +11,33 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class EmbeddingClient(Protocol):
-    """Provider-independent interface for text embeddings."""
+    """Класс «EmbeddingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
-        """Return embeddings for a batch of documents."""
+        """Выполняет шаг «embed documents». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         ...
 
     def embed_query(self, text: str) -> list[float]:
-        """Return an embedding for a single query string."""
+        """Выполняет шаг «embed query». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         ...
 
 
 class HashingEmbeddingClient:
-    """Deterministic local embedding client based on hashed word counts."""
+    """Класс «HashingEmbeddingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, dimension: int = 256) -> None:
-        """Create a hashing embedder with the given vector dimension."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         if dimension <= 0:
             raise ValueError("dimension must be greater than zero")
 
         self._dimension = dimension
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
-        """Return embeddings for multiple texts."""
+        """Выполняет шаг «embed documents». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return [self.embed_query(text) for text in texts]
 
     def embed_query(self, text: str) -> list[float]:
-        """Return a normalized hashed embedding for a single text."""
+        """Выполняет шаг «embed query». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         vector = [0.0] * self._dimension
         tokens = re.findall(r"\w+", text.lower())
 
@@ -52,6 +52,6 @@ class HashingEmbeddingClient:
         return [value / norm for value in vector]
 
     def _token_index(self, token: str) -> int:
-        """Map a token to a stable vector index."""
+        """Выполняет шаг «token index». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         digest = hashlib.sha256(token.encode("utf-8")).digest()
         return int.from_bytes(digest[:8], "big") % self._dimension

@@ -6,7 +6,7 @@ Message = Mapping[str, str]
 
 
 class LLMClient(ABC):
-    """Provider-independent interface for model calls."""
+    """Класс «LLMClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     @abstractmethod
     def generate(
@@ -14,7 +14,7 @@ class LLMClient(ABC):
         messages: Sequence[Message],
         **kwargs: Any,
     ) -> str:
-        """Return a plain text model response."""
+        """Выполняет шаг «generate». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         raise NotImplementedError
 
     @abstractmethod
@@ -23,7 +23,7 @@ class LLMClient(ABC):
         messages: Sequence[Message],
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Return a JSON object decoded from the model response."""
+        """Выполняет шаг «generate json». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         raise NotImplementedError
 
     @abstractmethod
@@ -32,5 +32,5 @@ class LLMClient(ABC):
         messages: Sequence[Message],
         **kwargs: Any,
     ) -> Iterable[str]:
-        """Yield text chunks from a streaming model response."""
+        """Выполняет шаг «stream». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         raise NotImplementedError

@@ -12,7 +12,7 @@ from app.config import (
 
 
 class TestCriteriaConfig(unittest.TestCase):
-    """Tests for the criteria configuration layer."""
+    """Класс «TestCriteriaConfig» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def tearDown(self) -> None:
         get_criteria_config.cache_clear()

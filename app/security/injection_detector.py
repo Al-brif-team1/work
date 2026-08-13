@@ -7,7 +7,7 @@ RiskLevel = Literal["low", "medium", "high"]
 
 @dataclass(frozen=True)
 class InjectionResult:
-    """Prompt injection detection result."""
+    """Класс «InjectionResult» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     safe: bool
     risk_level: RiskLevel
@@ -16,7 +16,7 @@ class InjectionResult:
 
 @dataclass(frozen=True)
 class InjectionPattern:
-    """Regex pattern and score used by the injection detector."""
+    """Класс «InjectionPattern» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     name: str
     pattern: re.Pattern[str]
@@ -24,7 +24,7 @@ class InjectionPattern:
 
 
 class InjectionDetector:
-    """Detects common prompt injection attempts using local regex rules."""
+    """Класс «InjectionDetector» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     _patterns: ClassVar[tuple[InjectionPattern, ...]] = (
         InjectionPattern(
@@ -129,7 +129,7 @@ class InjectionDetector:
     )
 
     def detect(self, text: str) -> InjectionResult:
-        """Return prompt injection risk information for text."""
+        """Выполняет шаг «detect». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         found_patterns: list[str] = []
         score = 0
 

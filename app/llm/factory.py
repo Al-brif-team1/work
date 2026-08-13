@@ -4,9 +4,9 @@ from app.llm.openrouter import OpenRouterLLMClient
 
 
 class LLMClientFactory:
-    """Factory for creating the configured LLM provider client."""
+    """Класс «LLMClientFactory» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     @staticmethod
     def create(settings: Settings) -> LLMClient:
-        """Create the current LLM client implementation."""
+        """Выполняет шаг «create». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return OpenRouterLLMClient(settings=settings)

@@ -1,4 +1,4 @@
-"""Prompt loading infrastructure."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from app.prompts.manager import (
     Prompt,

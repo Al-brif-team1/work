@@ -1,4 +1,4 @@
-"""Project brief extractor built on top of the shared LLM interface."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -24,11 +24,11 @@ if TYPE_CHECKING:
 
 
 class ExtractorError(RuntimeError):
-    """Raised when the brief extractor cannot produce a valid result."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class Extractor(BaseLLMStage[BriefInput, ExtractedBrief, ExtractionResult]):
-    """Extract structured facts from a normalized project brief."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Переводчик-Экстрактор. Он переводит бриф с человеческого языка на язык структурированных данных и извлекает факты без искажения смысла. Этот этап обращается к LLM, поэтому внутри работает ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseLLMStage, поэтому он умеет работать в нашем конвейере."""
 
     output_model: ClassVar[type[ExtractedBrief]] = ExtractedBrief
 
@@ -44,7 +44,7 @@ class Extractor(BaseLLMStage[BriefInput, ExtractedBrief, ExtractionResult]):
         model_name: str | None = None,
         llm_runner: LLMRunner | None = None,
     ) -> None:
-        """Initialize the extractor with its dependencies and prompt."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         super().__init__(
             llm_client=llm_client,
             tracing_client=tracing_client,
@@ -58,48 +58,43 @@ class Extractor(BaseLLMStage[BriefInput, ExtractedBrief, ExtractionResult]):
         )
 
     def extract(self, brief_input: BriefInput) -> ExtractionResult:
-        """Extract structured facts from a brief input."""
+        """Выполняет шаг «extract». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.run(brief_input)
 
     def extract_context(self, context: AIContext) -> AIContext:
-        """Return context enriched with extraction output."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return context.with_extraction_result(self.extract(context.brief_input))
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Run this stage using the common AIContext pipeline contract."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return self.extract_context(context)
 
     @property
     def trace_name(self) -> str:
-        """Return the Langfuse trace name for extraction."""
+        """Выполняет шаг «trace name». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return "extractor.brief"
 
     @property
     def span_name(self) -> str:
-        """Return the Langfuse span name for the extraction LLM call."""
+        """Выполняет шаг «span name». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return "extractor.llm"
 
     def build_prompt(self, stage_input: BriefInput) -> str:
-        """Render the user-facing extraction prompt.
-
-        New prompts should separate ``# System`` and ``# User`` sections.
-        Legacy single-section prompts are returned as the user prompt until the
-        prompt file is migrated.
-        """
+        """Выполняет шаг «build prompt». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         rendered = self._render_extraction_prompt(stage_input)
         return rendered.user or rendered.system
 
     def build_system_prompt(self, stage_input: BriefInput) -> str | None:
-        """Render the system prompt when the prompt template has a user section."""
+        """Выполняет шаг «build system prompt». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         rendered = self._render_extraction_prompt(stage_input)
         return rendered.system if rendered.user is not None else None
 
     def build_context(self, stage_input: BriefInput) -> None:
-        """Do not pass duplicate transport context; prompt rendering owns input data."""
+        """Выполняет шаг «build context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return None
 
     def build_trace_input(self, stage_input: BriefInput) -> dict[str, str | None]:
-        """Build trace metadata without logging the full brief text."""
+        """Выполняет шаг «build trace input». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return {
             "source": stage_input.metadata.source,
             "input_type": stage_input.metadata.input_type,
@@ -111,7 +106,7 @@ class Extractor(BaseLLMStage[BriefInput, ExtractedBrief, ExtractionResult]):
         self,
         result: LLMRunResult[ExtractedBrief],
     ) -> ExtractionResult:
-        """Convert the shared LLM result into extractor-specific output."""
+        """Выполняет шаг «postprocess». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         extracted_brief = self._normalize_extracted_brief(result.payload)
         return ExtractionResult(
             extracted_brief=extracted_brief,
@@ -128,7 +123,7 @@ class Extractor(BaseLLMStage[BriefInput, ExtractedBrief, ExtractionResult]):
 
     @staticmethod
     def _default_prompt_path() -> Path:
-        """Return the default prompt template path."""
+        """Возвращает значение по умолчанию, чтобы этап мог работать без ручной настройки."""
         return Path(__file__).resolve().parents[2] / "prompts" / "extractor.md"
 
     def _build_failure_exception(
@@ -136,13 +131,13 @@ class Extractor(BaseLLMStage[BriefInput, ExtractedBrief, ExtractionResult]):
         attempts: int,
         last_error: Exception | None,
     ) -> Exception:
-        """Build the extractor-specific failure exception."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return ExtractorError(
             f"Unable to extract brief structure after {attempts} attempts"
         )
 
     def _render_extraction_prompt(self, brief_input: BriefInput) -> RenderedPrompt:
-        """Render the configured extraction prompt through PromptManager."""
+        """Готовит человекочитаемый текст из внутренних данных. Это нужно для промптов, объяснений или финального ответа."""
         return self._render_prompt(
             {
                 "brief_text": brief_input.normalized_text,
@@ -150,7 +145,7 @@ class Extractor(BaseLLMStage[BriefInput, ExtractedBrief, ExtractionResult]):
         )
 
     def _normalize_extracted_brief(self, extracted_brief: ExtractedBrief) -> ExtractedBrief:
-        """Apply minimal whitespace cleanup without changing extracted meaning."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return extracted_brief.model_copy(
             update={
                 "project_goal": self._normalize_fact(extracted_brief.project_goal),
@@ -177,12 +172,12 @@ class Extractor(BaseLLMStage[BriefInput, ExtractedBrief, ExtractionResult]):
 
     @classmethod
     def _normalize_facts(cls, facts: list[ExtractedFact]) -> list[ExtractedFact]:
-        """Normalize a list of extracted facts."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return [cls._normalize_fact(fact) for fact in facts]
 
     @staticmethod
     def _normalize_fact(fact: ExtractedFact) -> ExtractedFact:
-        """Trim strings and drop blank evidence fragments."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         value = fact.value.strip() if fact.value is not None else None
         notes = fact.notes.strip() if fact.notes is not None else None
         return fact.model_copy(

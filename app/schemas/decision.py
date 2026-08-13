@@ -1,4 +1,4 @@
-"""Models for deterministic arbitration results."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DecisionStatus(str, Enum):
-    """Supported final decision statuses."""
+    """Класс «DecisionStatus» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     accept = "ACCEPT"
     reject = "REJECT"
@@ -19,7 +19,7 @@ class DecisionStatus(str, Enum):
 
 
 class ArbitrationRuleHit(BaseModel):
-    """A single matched arbitration rule."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     rule_key: str
     title: str
@@ -34,7 +34,7 @@ class ArbitrationRuleHit(BaseModel):
 
 
 class ArbitrationResult(BaseModel):
-    """Final deterministic decision for a brief."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     final_status: DecisionStatus
     reasons: list[str] = Field(default_factory=list)

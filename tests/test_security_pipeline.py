@@ -4,7 +4,7 @@ from app.security import SecurityPipeline
 
 
 class TestSecurityPipeline(unittest.TestCase):
-    """Pipeline integration tests for the security layer."""
+    """Класс «TestSecurityPipeline» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_safe_text_returns_sanitized_text_and_restoration_map(self) -> None:
         pipeline = SecurityPipeline()

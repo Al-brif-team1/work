@@ -1,4 +1,4 @@
-"""Final self-check for user-facing responses."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -28,11 +28,11 @@ if TYPE_CHECKING:
 
 
 class SelfCheckError(RuntimeError):
-    """Raised when the self-check cannot complete."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 def _risk_analysis_prompt_section(assessment_result: AssessmentResult) -> dict[str, Any]:
-    """Build the legacy-shaped risk section from unified assessment output."""
+    """Выполняет шаг «risk analysis prompt section». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     technical_info = assessment_result.technical_info
     return {
         "risks": [
@@ -56,7 +56,7 @@ def _risk_analysis_prompt_section(assessment_result: AssessmentResult) -> dict[s
 
 
 def _evaluation_prompt_section(assessment_result: AssessmentResult) -> dict[str, Any]:
-    """Build the legacy-shaped evaluation section from unified assessment output."""
+    """Выполняет шаг «evaluation prompt section». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     technical_info = assessment_result.technical_info
     return {
         "criterion_evaluations": [
@@ -80,10 +80,10 @@ def _evaluation_prompt_section(assessment_result: AssessmentResult) -> dict[str,
 
 
 class DeterministicValidator:
-    """Perform deterministic checks before any optional LLM review."""
+    """Класс «DeterministicValidator» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def validate(self, context: SelfCheckContext) -> SelfCheckResult:
-        """Validate the response using only deterministic rules."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         issues: list[str] = []
         warnings: list[str] = []
         checked_fields: list[str] = []
@@ -162,7 +162,7 @@ class DeterministicValidator:
         warnings: list[str],
         checked_fields: list[str],
     ) -> None:
-        """Validate questions and MVP plan placement against the arbiter status."""
+        """Выполняет шаг «check status consistency». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         status = context.arbitration_result.final_status
         payload = context.response_payload or {}
 
@@ -212,7 +212,7 @@ class DeterministicValidator:
         context: SelfCheckContext,
         facts: list[str],
     ) -> list[str]:
-        """Find fact claims that are not supported by the available context."""
+        """Выполняет шаг «find unsupported facts». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         corpus = self._build_support_corpus(context)
         unsupported: list[str] = []
         for fact in facts:
@@ -225,13 +225,13 @@ class DeterministicValidator:
 
     @staticmethod
     def _fact_is_supported(fact: str, source: str) -> bool:
-        """Check whether a fact is supported by a source fragment."""
+        """Выполняет шаг «fact is supported». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         source = DeterministicValidator._normalize_text(source)
         return fact in source or source in fact
 
     @staticmethod
     def _build_support_corpus(context: SelfCheckContext) -> list[str]:
-        """Build the textual evidence corpus available to the self-check."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         corpus: list[str] = []
         corpus.extend(
             [
@@ -279,7 +279,7 @@ class DeterministicValidator:
 
     @staticmethod
     def _flatten_model_strings(model: Any) -> list[str]:
-        """Collect string fragments from a Pydantic model or container."""
+        """Выполняет шаг «flatten model strings». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         fragments: list[str] = []
         if isinstance(model, str):
             return [model]
@@ -299,7 +299,7 @@ class DeterministicValidator:
 
     @staticmethod
     def _extract_response_status(payload: dict[str, Any] | None) -> DecisionStatus | None:
-        """Extract a decision status from the response payload."""
+        """Выполняет шаг «extract response status». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not payload:
             return None
         raw_status = payload.get("status") or payload.get("final_status")
@@ -312,7 +312,7 @@ class DeterministicValidator:
 
     @staticmethod
     def _extract_questions(payload: dict[str, Any]) -> list[str]:
-        """Extract clarification questions from the response payload."""
+        """Выполняет шаг «extract questions». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         raw_questions = payload.get("questions")
         if not isinstance(raw_questions, list):
             return []
@@ -331,7 +331,7 @@ class DeterministicValidator:
 
     @staticmethod
     def _extract_mvp_plan(payload: dict[str, Any]) -> dict[str, Any] | None:
-        """Extract an MVP plan from the response payload."""
+        """Выполняет шаг «extract mvp plan». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         raw_plan = payload.get("mvp_plan")
         if isinstance(raw_plan, dict) and raw_plan:
             return raw_plan
@@ -339,7 +339,7 @@ class DeterministicValidator:
 
     @staticmethod
     def _extract_response_facts(payload: dict[str, Any] | None) -> list[str]:
-        """Extract explicit fact claims from the response payload."""
+        """Выполняет шаг «extract response facts». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not payload:
             return []
         facts = payload.get("facts") or payload.get("claims") or []
@@ -352,7 +352,7 @@ class DeterministicValidator:
         response_text: str,
         status: DecisionStatus,
     ) -> list[str]:
-        """Find obvious status contradictions in the free-form response text."""
+        """Выполняет шаг «check text contradictions». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         normalized = DeterministicValidator._normalize_text(response_text)
         contradictions: dict[DecisionStatus, list[str]] = {
             DecisionStatus.accept: [
@@ -388,21 +388,21 @@ class DeterministicValidator:
 
     @staticmethod
     def _textual_checked_fields(response_text: str) -> list[str]:
-        """Return fields covered by text-level checks."""
+        """Выполняет шаг «textual checked fields». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not response_text.strip():
             return []
         return ["response_text"]
 
     @staticmethod
     def _normalize_text(value: str) -> str:
-        """Normalize free-form text for heuristic comparison."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         value = value.lower()
         value = re.sub(r"\s+", " ", value)
         return value.strip()
 
 
 class LLMSelfChecker(BaseLLMStage):
-    """Optional LLM-based semantic self-check for the final response."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Робот этапа. Он выполняет участок конвейера «l l m self checker». Этот этап работает как детерминированный робот: обычный код, без творческих догадок ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseLLMStage, поэтому он умеет работать в нашем конвейере."""
 
     def __init__(
         self,
@@ -416,7 +416,7 @@ class LLMSelfChecker(BaseLLMStage):
         model_name: str | None = None,
         llm_runner: LLMRunner | None = None,
     ) -> None:
-        """Initialize the LLM self-checker."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         super().__init__(
             llm_client=llm_client,
             tracing_client=tracing_client,
@@ -434,7 +434,7 @@ class LLMSelfChecker(BaseLLMStage):
         context: SelfCheckContext,
         deterministic_result: SelfCheckResult,
     ) -> SelfCheckResult:
-        """Run the LLM self-check after deterministic validation passes."""
+        """Выполняет шаг «check». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if deterministic_result.issues:
             return deterministic_result
         if not context.response_text.strip():
@@ -489,7 +489,7 @@ class LLMSelfChecker(BaseLLMStage):
         context: SelfCheckContext,
         deterministic_result: SelfCheckResult,
     ) -> str:
-        """Serialize the self-check context for the LLM."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return json.dumps(
             {
                 "response_text": context.response_text,
@@ -528,7 +528,7 @@ class LLMSelfChecker(BaseLLMStage):
         context: SelfCheckContext,
         deterministic_result: SelfCheckResult,
     ) -> str:
-        """Render the self-check system prompt."""
+        """Готовит человекочитаемый текст из внутренних данных. Это нужно для промптов, объяснений или финального ответа."""
         return self._render_prompt(
             {
                 "review_context": {
@@ -544,7 +544,7 @@ class LLMSelfChecker(BaseLLMStage):
 
     @staticmethod
     def _default_prompt_path() -> Path:
-        """Return the default prompt path for the LLM review."""
+        """Возвращает значение по умолчанию, чтобы этап мог работать без ручной настройки."""
         return Path(__file__).resolve().parents[2] / "prompts" / "self_check.md"
 
     def _build_failure_exception(
@@ -552,26 +552,26 @@ class LLMSelfChecker(BaseLLMStage):
         attempts: int,
         last_error: Exception | None,
     ) -> Exception:
-        """Build the self-check-specific failure exception."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return SelfCheckError(f"Unable to complete LLM self-check after {attempts} attempts")
 
 
 class SelfChecker:
-    """Orchestrate deterministic and optional LLM-based self-checks."""
+    """Класс «SelfChecker» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(
         self,
         llm_self_checker: LLMSelfChecker | None = None,
         deterministic_validator: DeterministicValidator | None = None,
     ) -> None:
-        """Initialize the self-check orchestrator."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         self._llm_self_checker = llm_self_checker
         self._deterministic_validator = (
             deterministic_validator or DeterministicValidator()
         )
 
     def check(self, context: SelfCheckContext) -> SelfCheckResult:
-        """Run deterministic checks and optionally the LLM review."""
+        """Выполняет шаг «check». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         deterministic_result = self._deterministic_validator.validate(context)
         if deterministic_result.issues:
             return deterministic_result
@@ -581,17 +581,17 @@ class SelfChecker:
         return self._llm_self_checker.check(context, deterministic_result)
 
     def check_context(self, context: AIContext) -> AIContext:
-        """Return context enriched with self-check output."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         self_check_context = self._build_self_check_context(context)
         return context.with_self_check_result(self.check(self_check_context))
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Run this stage using the common AIContext pipeline contract."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return self.check_context(context)
 
     @staticmethod
     def _build_self_check_context(context: AIContext) -> SelfCheckContext:
-        """Build self-check input from the shared AIContext."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         if context.final_response_text is None:
             raise SelfCheckError("Self-check requires final_response_text in AIContext")
         if context.extracted_brief is None:

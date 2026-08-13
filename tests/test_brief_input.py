@@ -9,7 +9,7 @@ from app.main import run
 
 
 class TestBriefInputNormalizer(unittest.TestCase):
-    """Tests for brief text normalization."""
+    """Класс «TestBriefInputNormalizer» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_normalize_text_preserves_meaning_and_cleans_transport_junk(self) -> None:
         normalizer = BriefInputNormalizer()
@@ -34,7 +34,7 @@ class TestBriefInputNormalizer(unittest.TestCase):
 
 
 class TestBriefInputFactory(unittest.TestCase):
-    """Tests for building validated brief input models."""
+    """Класс «TestBriefInputFactory» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_from_text_preserves_original_text(self) -> None:
         factory = BriefInputFactory()
@@ -70,7 +70,7 @@ class TestBriefInputFactory(unittest.TestCase):
 
 
 class TestBriefCli(unittest.TestCase):
-    """Tests for the CLI programmatic entry point."""
+    """Класс «TestBriefCli» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_run_accepts_text_argument(self) -> None:
         output = io.StringIO()

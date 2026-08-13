@@ -19,7 +19,7 @@ from app.schemas import Document, DocumentMetadata, SearchResult
 
 
 class FakeEmbeddingClient:
-    """Deterministic embedding client used for protocol checks."""
+    """Класс «FakeEmbeddingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return [self.embed_query(text) for text in texts]
@@ -31,7 +31,7 @@ class FakeEmbeddingClient:
 
 
 class FakeVectorStore:
-    """In-memory vector store double for unit tests."""
+    """Класс «FakeVectorStore» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.added_documents: list[Document] = []
@@ -68,7 +68,7 @@ class FakeVectorStore:
 
 
 class TestKnowledgeModels(unittest.TestCase):
-    """Tests for knowledge base data models."""
+    """Класс «TestKnowledgeModels» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_document_metadata_accepts_extra_fields(self) -> None:
         metadata = DocumentMetadata(
@@ -98,7 +98,7 @@ class TestKnowledgeModels(unittest.TestCase):
 
 
 class TestKnowledgeProtocols(unittest.TestCase):
-    """Tests for runtime-checkable knowledge interfaces."""
+    """Класс «TestKnowledgeProtocols» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_embedding_client_protocol_accepts_compatible_object(self) -> None:
         client = FakeEmbeddingClient()
@@ -112,7 +112,7 @@ class TestKnowledgeProtocols(unittest.TestCase):
 
 
 class TestDocumentLoader(unittest.TestCase):
-    """Tests for document loading from the knowledge directory."""
+    """Класс «TestDocumentLoader» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_loader_defaults_to_knowledge_directory(self) -> None:
         loader = DocumentLoader()
@@ -150,7 +150,7 @@ class TestDocumentLoader(unittest.TestCase):
 
 
 class TestTextChunker(unittest.TestCase):
-    """Tests for long-text chunking."""
+    """Класс «TestTextChunker» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_chunk_splits_text_with_overlap(self) -> None:
         chunker = TextChunker(chunk_size=4, overlap=1)
@@ -166,7 +166,7 @@ class TestTextChunker(unittest.TestCase):
 
 
 class TestKnowledgeIndexer(unittest.TestCase):
-    """Tests for the indexing pipeline."""
+    """Класс «TestKnowledgeIndexer» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_index_documents_loads_chunks_and_embeddings(self) -> None:
         loader = Mock(spec=DocumentLoader)
@@ -228,7 +228,7 @@ class TestKnowledgeIndexer(unittest.TestCase):
 
 
 class TestRetriever(unittest.TestCase):
-    """Tests for search query retrieval."""
+    """Класс «TestRetriever» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_retrieve_uses_embedding_and_metadata_filters(self) -> None:
         embedder = FakeEmbeddingClient()
@@ -267,7 +267,7 @@ class TestRetriever(unittest.TestCase):
 
 
 class TestKnowledgePipelineIntegration(unittest.TestCase):
-    """End-to-end tests for the knowledge base infrastructure."""
+    """Класс «TestKnowledgePipelineIntegration» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_documents_loader_indexer_and_retriever_work_together(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -307,7 +307,7 @@ class TestKnowledgePipelineIntegration(unittest.TestCase):
 
 @unittest.skipUnless(importlib.util.find_spec("chromadb"), "chromadb is not installed")
 class TestChromaVectorStore(unittest.TestCase):
-    """Integration tests for the Chroma-backed vector store."""
+    """Класс «TestChromaVectorStore» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_add_search_filter_and_delete_documents(self) -> None:
         store = ChromaVectorStore(collection_name="test_documents")
@@ -367,7 +367,7 @@ class TestChromaVectorStore(unittest.TestCase):
 
 
 class TestHashingEmbeddingClient(unittest.TestCase):
-    """Tests for the local fallback embedding implementation."""
+    """Класс «TestHashingEmbeddingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_embedder_returns_normalized_vectors(self) -> None:
         embedder = HashingEmbeddingClient(dimension=8)

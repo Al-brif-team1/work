@@ -1,4 +1,4 @@
-"""Tests for the project brief extractor."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from app.tracing.tracing import NoOpTracingClient
 
 
 class RecordingTraceContext:
-    """Simple trace/span context used by unit tests."""
+    """Класс «RecordingTraceContext» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.updates: list[dict[str, Any]] = []
@@ -33,7 +33,7 @@ class RecordingTraceContext:
 
 
 class RecordingTracingClient:
-    """Tracing double that records trace and span updates."""
+    """Класс «RecordingTracingClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self) -> None:
         self.trace = RecordingTraceContext()
@@ -56,7 +56,7 @@ class RecordingTracingClient:
 
 
 class FakeLLMClient:
-    """Deterministic LLM client used for extractor unit tests."""
+    """Класс «FakeLLMClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, responses: list[dict[str, Any] | Exception]) -> None:
         self._responses = responses
@@ -78,7 +78,7 @@ class FakeLLMClient:
 
 
 class FakeLLMRunner:
-    """Runner double that records the new BaseLLMStage.run contract."""
+    """Класс «FakeLLMRunner» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, payload: ExtractedBrief | Exception) -> None:
         self.payload = payload
@@ -105,7 +105,7 @@ class FakeLLMRunner:
 
 
 def make_valid_extraction() -> dict[str, Any]:
-    """Return a minimal valid extraction payload."""
+    """Выполняет шаг «make valid extraction». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return {
         "project_goal": {
             "status": "explicit",
@@ -196,7 +196,7 @@ def make_valid_extraction() -> dict[str, Any]:
 
 
 class TestExtractor(unittest.TestCase):
-    """Unit tests for the brief extractor."""
+    """Класс «TestExtractor» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def setUp(self) -> None:
         self.brief_input = BriefInputFactory().from_text(
@@ -414,7 +414,7 @@ class TestExtractor(unittest.TestCase):
     "OPENROUTER_API_KEY and OPENROUTER_MODEL are required for the integration test",
 )
 class TestExtractorIntegration(unittest.TestCase):
-    """Integration test that uses a real LLM client when configured."""
+    """Класс «TestExtractorIntegration» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_real_llm_extraction_produces_structured_output(self) -> None:
         settings = Settings(

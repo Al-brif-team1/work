@@ -5,7 +5,7 @@ from typing import ClassVar
 
 @dataclass
 class PIISanitizer:
-    """Replaces supported personal data values with reversible placeholders."""
+    """Класс «PIISanitizer» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     _mapping: dict[str, str] = field(default_factory=dict, init=False)
     _counters: dict[str, int] = field(default_factory=dict, init=False)
@@ -69,7 +69,7 @@ class PIISanitizer:
     )
 
     def sanitize(self, text: str) -> str:
-        """Replace detected PII values in text with typed placeholders."""
+        """Выполняет шаг «sanitize». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         sanitized = text
 
         for pii_type, pattern in self._patterns:
@@ -81,7 +81,7 @@ class PIISanitizer:
         return sanitized
 
     def restore(self, text: str) -> str:
-        """Restore placeholders previously created by this sanitizer instance."""
+        """Выполняет шаг «restore». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         restored = text
 
         for placeholder, original_value in sorted(
@@ -95,7 +95,7 @@ class PIISanitizer:
 
     @property
     def mapping(self) -> dict[str, str]:
-        """Return a copy of placeholder-to-original-value mapping."""
+        """Выполняет шаг «mapping». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._mapping.copy()
 
     def _replace(self, pii_type: str, value: str) -> str:

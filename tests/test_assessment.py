@@ -1,4 +1,4 @@
-"""Tests for the unified Assessment architecture layer."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ from app.tracing.tracing import NoOpTracingClient
 
 
 class FakeRetriever:
-    """Retriever double that records assessment retrieval requests."""
+    """Класс «FakeRetriever» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, results: list[SearchResult]) -> None:
         self.results = results
@@ -69,7 +69,7 @@ class FakeRetriever:
 
 
 class FakeLLMRunner:
-    """LLMRunner double used by AssessmentStage tests."""
+    """Класс «FakeLLMRunner» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, payload: AssessmentPayload | Exception) -> None:
         self.payload = payload
@@ -96,7 +96,7 @@ class FakeLLMRunner:
 
 
 def make_extracted_brief() -> ExtractedBrief:
-    """Create a minimal extracted brief for assessment tests."""
+    """Выполняет шаг «make extracted brief». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return ExtractedBrief(
         project_goal=ExtractedFact(
             status=FactStatus.explicit,
@@ -142,7 +142,7 @@ def make_extracted_brief() -> ExtractedBrief:
 
 
 def make_completeness_result() -> CompletenessResult:
-    """Create a completeness result with one missing field."""
+    """Выполняет шаг «make completeness result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return CompletenessResult(
         is_complete=False,
         missing_information=[
@@ -162,7 +162,7 @@ def make_completeness_result() -> CompletenessResult:
 
 
 def make_context() -> AIContext:
-    """Create a context ready for assessment preparation."""
+    """Выполняет шаг «make context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     brief_input = BriefInputFactory().from_text(
         "Build a support bot with Python and external channels."
     )
@@ -174,7 +174,7 @@ def make_context() -> AIContext:
 
 
 def make_search_result() -> SearchResult:
-    """Create a search result used as retrieved assessment context."""
+    """Выполняет шаг «make search result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return SearchResult(
         document=Document(
             id="kb-1",
@@ -187,12 +187,12 @@ def make_search_result() -> SearchResult:
 
 
 def load_test_criteria_config() -> CriteriaConfig:
-    """Load criteria config without touching the global cached accessor."""
+    """Выполняет шаг «load test criteria config». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return CriteriaLoader.load()
 
 
 def make_criteria_config_without_placeholder_risk() -> CriteriaConfig:
-    """Create criteria config with only active production risk types."""
+    """Выполняет шаг «make criteria config without placeholder risk». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     config = load_test_criteria_config()
     risk_analysis = config.evaluation.risk_analysis
     active_risk_types = [
@@ -214,7 +214,7 @@ def make_criteria_config_without_placeholder_risk() -> CriteriaConfig:
 
 
 def make_assessment_payload() -> AssessmentPayload:
-    """Create a valid Assessment payload for stage tests."""
+    """Выполняет шаг «make assessment payload». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return AssessmentPayload(
         criterion_evaluations=[
             CriterionEvaluation(
@@ -254,7 +254,7 @@ def make_assessment_payload() -> AssessmentPayload:
 
 
 class TestAssessmentModels(unittest.TestCase):
-    """Tests for unified assessment schemas."""
+    """Класс «TestAssessmentModels» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_assessment_result_contains_criteria_risks_evidence_and_confidence(
         self,
@@ -352,7 +352,7 @@ class TestAssessmentModels(unittest.TestCase):
 
 
 class TestAssessmentPreparation(unittest.TestCase):
-    """Tests for assessment preparation and integration points."""
+    """Класс «TestAssessmentPreparation» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_prepare_uses_retriever_and_criteria_configuration(self) -> None:
         retriever = FakeRetriever([make_search_result()])
@@ -413,7 +413,7 @@ class TestAssessmentPreparation(unittest.TestCase):
 
 
 class TestAssessmentStage(unittest.TestCase):
-    """Tests for the unified Assessment LLM stage."""
+    """Класс «TestAssessmentStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_assessment_works_without_deprecated_placeholder_risk(self) -> None:
         config = make_criteria_config_without_placeholder_risk()

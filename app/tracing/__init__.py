@@ -1,4 +1,4 @@
-"""Logging and tracing infrastructure exports."""
+"""Модуль наблюдаемости. Он собирает технические следы выполнения, чтобы было проще понять, какой робот что сделал."""
 
 from app.tracing.logger import LoggerFactory, get_logger
 from app.tracing.tracing import (

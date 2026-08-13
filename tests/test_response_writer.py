@@ -1,4 +1,4 @@
-"""Tests for deterministic customer response drafting."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from app.schemas import (
 
 
 def make_context(status: DecisionStatus = DecisionStatus.accept) -> AIContext:
-    """Create a completed analysis context before response writing."""
+    """Выполняет шаг «make context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     brief = BriefInputFactory().from_text(
         "Нужно сделать сайт для образовательного проекта."
     )
@@ -134,7 +134,7 @@ def make_context(status: DecisionStatus = DecisionStatus.accept) -> AIContext:
 
 
 def make_empty_question_result() -> QuestionGenerationResult:
-    """Create an empty clarification result for characterization tests."""
+    """Выполняет шаг «make empty question result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return QuestionGenerationResult(
         questions=[],
         technical_info=QuestionGenerationTechnicalInfo(
@@ -147,7 +147,7 @@ def make_empty_question_result() -> QuestionGenerationResult:
 
 
 def make_mvp_planning_result() -> MVPPlanningResult:
-    """Create a minimal MVP planning result for characterization tests."""
+    """Выполняет шаг «make mvp planning result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return MVPPlanningResult(
         plan=MVPPlan(
             core_goal="Build a focused website MVP",
@@ -168,7 +168,7 @@ def make_mvp_planning_result() -> MVPPlanningResult:
 
 
 class TestResponseWriterStage(unittest.TestCase):
-    """Unit tests for deterministic response writer."""
+    """Класс «TestResponseWriterStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_writes_response_and_public_payload(self) -> None:
         updated = ResponseWriterStage().run_context(make_context())

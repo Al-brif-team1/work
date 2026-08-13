@@ -1,4 +1,4 @@
-"""Deterministic arbitration for project brief decisions."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -31,15 +31,15 @@ from app.tracing.tracing import NoOpTracingClient, TracingClient
 
 
 class ArbitrationError(RuntimeError):
-    """Raised when deterministic arbitration cannot be completed."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class ArbitrationConfigError(ArbitrationError):
-    """Raised when arbitration configuration is missing or invalid."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
-    """Produce a final deterministic decision from prior pipeline results."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Робот-судья. Он обычным детерминированным кодом применяет правила и выносит вердикт, чтобы исключить галлюцинации ИИ. Этот этап работает как детерминированный робот: обычный код, без творческих догадок ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseStage, поэтому он умеет работать в нашем конвейере."""
 
     def __init__(
         self,
@@ -47,7 +47,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         criteria_path: str | Path | None = None,
         tracing_client: TracingClient | None = None,
     ) -> None:
-        """Initialize the arbiter with a validated configuration."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         super().__init__(
             stage_name=self.__class__.__name__,
             tracing_client=tracing_client or NoOpTracingClient(),
@@ -87,7 +87,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         risks: list[Risk],
         criterion_evaluations: list[CriterionEvaluation],
     ) -> ArbitrationResult:
-        """Return a deterministic final decision from active signal parts."""
+        """Выполняет шаг «arbitrate from parts». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         signals = self._build_signals(
             completeness_result=completeness_result,
             risks=risks,
@@ -128,7 +128,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         completeness_result: CompletenessResult,
         assessment_result: AssessmentResult,
     ) -> ArbitrationResult:
-        """Return a deterministic decision from unified Assessment output."""
+        """Выполняет шаг «arbitrate assessment». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._arbitrate_from_parts(
             completeness_result=completeness_result,
             risks=assessment_result.risks,
@@ -136,7 +136,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         )
 
     def arbitrate_context(self, context: AIContext) -> AIContext:
-        """Return context enriched with arbitration based on available signals."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         if context.completeness_result is None:
             raise ArbitrationError(
                 "Arbitration requires completeness_result in AIContext"
@@ -154,26 +154,26 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         return context.with_arbitration_result(result)
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Run this stage using the common AIContext pipeline contract."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return self.run(context)
 
     def _run(self, stage_input: AIContext) -> AIContext:
-        """Run deterministic arbitration through the BaseStage lifecycle."""
+        """[ЗАПУСК РОБОТА] Главная команда этапа: она заставляет этого робота выполнить свою работу и вернуть результат в формате, который понимает следующий участок конвейера."""
         return self.arbitrate_context(stage_input)
 
     def _build_stage_exception(self, exc: Exception) -> Exception:
-        """Preserve arbitration-specific exceptions at the stage boundary."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return exc
 
     def _build_trace_input(self, stage_input: AIContext) -> dict[str, Any]:
-        """Build safe arbitration trace metadata."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return {
             "has_assessment_result": stage_input.assessment_result is not None,
             "has_completeness_result": stage_input.completeness_result is not None,
         }
 
     def _build_trace_output(self, stage_output: AIContext) -> dict[str, Any]:
-        """Build safe arbitration trace output."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         result = stage_output.arbitration_result
         return {
             "status": "success",
@@ -186,7 +186,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         signals: dict[str, Any],
         evidence_map: dict[str, list[str]],
     ) -> ArbitrationResult:
-        """Convert a matched rule into a final arbitration result."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         evidence = self._collect_evidence(rule, evidence_map)
         condition_texts = [
             self._render_condition(condition) for condition in rule.conditions
@@ -224,7 +224,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         rule: ArbitrationRule,
         signals: dict[str, Any],
     ) -> list[str]:
-        """Build human-readable reasons for a matched rule."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         rendered_conditions = [
             self._render_condition(condition) for condition in rule.conditions
         ]
@@ -238,7 +238,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         rule: ArbitrationRule,
         signals: dict[str, Any],
     ) -> bool:
-        """Check whether all conditions in a rule match the signal snapshot."""
+        """Выполняет шаг «rule matches». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return all(
             self._condition_matches(condition, signals.get(condition.field))
             for condition in rule.conditions
@@ -249,7 +249,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         condition: ArbitrationCondition,
         signal_value: Any,
     ) -> bool:
-        """Evaluate a single arbitration condition."""
+        """Выполняет шаг «condition matches». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         operator = condition.operator.lower()
         target = condition.value
 
@@ -292,7 +292,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         risks: list[Risk],
         criterion_evaluations: list[CriterionEvaluation],
     ) -> dict[str, Any]:
-        """Build the deterministic signal snapshot used by the rule engine."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         risk_counts = self._risk_counts(risks)
         evaluation_counts = self._evaluation_counts(criterion_evaluations)
         completeness_counts = self._completeness_counts(completeness_result)
@@ -329,7 +329,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         risks: list[Risk],
         criterion_evaluations: list[CriterionEvaluation],
     ) -> dict[str, list[str]]:
-        """Build evidence fragments for each supported signal."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         evidence_map: dict[str, list[str]] = {
             "completeness.is_complete": self._present_field_evidence(
                 completeness_result
@@ -388,7 +388,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         return evidence_map
 
     def _validate_config(self) -> None:
-        """Validate arbitration configuration semantics."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         self._parse_status(self._arbitration.default_status)
 
         for rule in self._arbitration.rules:
@@ -400,7 +400,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
                     )
 
     def _build_supported_signals(self) -> set[str]:
-        """Return the fixed set of signals produced by this arbiter."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return {
             "completeness.is_complete",
             "completeness.missing_count",
@@ -425,7 +425,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         rule: ArbitrationRule,
         evidence_map: dict[str, list[str]],
     ) -> list[str]:
-        """Collect deduplicated evidence for a matched rule."""
+        """Выполняет шаг «collect evidence». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         collected: list[str] = []
         for condition in rule.conditions:
             for fragment in evidence_map.get(condition.field, []):
@@ -438,7 +438,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         conditions: list[ArbitrationCondition],
         signals: dict[str, Any],
     ) -> str:
-        """Render the signals referenced by a rule."""
+        """Выполняет шаг «format signals». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         parts = []
         for condition in conditions:
             parts.append(f"{condition.field}={signals.get(condition.field)!r}")
@@ -446,7 +446,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _render_condition(condition: ArbitrationCondition) -> str:
-        """Render a human-readable condition string."""
+        """Готовит человекочитаемый текст из внутренних данных. Это нужно для промптов, объяснений или финального ответа."""
         return (
             f"{condition.field} {condition.operator} "
             f"{condition.value!r}"
@@ -454,7 +454,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _normalize_value(value: Any, case_sensitive: bool) -> Any:
-        """Normalize values before comparison."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         if isinstance(value, str) and not case_sensitive:
             return value.strip().lower()
         if isinstance(value, list):
@@ -466,7 +466,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _compare_numbers(left: Any, right: Any, operator: str) -> bool:
-        """Compare numeric values using the requested operator."""
+        """Выполняет шаг «compare numbers». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not isinstance(left, (int, float)) or not isinstance(right, (int, float)):
             return False
         if operator == ">":
@@ -481,7 +481,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _membership(left: Any, right: Any) -> bool:
-        """Check whether the left value is a member of the right sequence."""
+        """Выполняет шаг «membership». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not isinstance(right, list):
             right = [right]
 
@@ -492,7 +492,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _contains(left: Any, right: Any) -> bool:
-        """Check containment for strings and lists."""
+        """Выполняет шаг «contains». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if isinstance(left, str) and isinstance(right, str):
             return right in left
         if isinstance(left, list):
@@ -501,7 +501,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _any_in(left: Any, right: Any) -> bool:
-        """Check whether any item from left exists in right."""
+        """Выполняет шаг «any in». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not isinstance(left, list):
             return False
         if not isinstance(right, list):
@@ -510,7 +510,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _all_in(left: Any, right: Any) -> bool:
-        """Check whether all items from left exist in right."""
+        """Выполняет шаг «all in». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not isinstance(left, list):
             return False
         if not isinstance(right, list):
@@ -519,7 +519,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _parse_status(status: str) -> DecisionStatus:
-        """Parse a configured status string into the enum."""
+        """Разбирает текстовое значение и превращает его в программный объект. Так код дальше работает не с произвольной строкой, а с понятной структурой."""
         try:
             return DecisionStatus(status)
         except ValueError as exc:
@@ -529,7 +529,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _risk_counts(risks: list[Risk]) -> dict[str, Any]:
-        """Count risk severities."""
+        """Выполняет шаг «risk counts». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         counts = {
             "total_count": len(risks),
             "low_count": 0,
@@ -555,7 +555,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
 
     @staticmethod
     def _risk_max_severity(risks: list[Risk]) -> str:
-        """Return the maximum risk severity as a string."""
+        """Выполняет шаг «risk max severity». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if not risks:
             return "none"
 
@@ -576,7 +576,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         risks: list[Risk],
         severities: set[str],
     ) -> list[str]:
-        """Collect evidence fragments for risks matching the given severities."""
+        """Выполняет шаг «risk evidence». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         evidence: list[str] = []
         for risk in risks:
             if risk.severity.value not in severities:
@@ -590,7 +590,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
     def _evaluation_counts(
         criterion_evaluations: list[CriterionEvaluation],
     ) -> dict[str, int]:
-        """Count criterion evaluation outcomes."""
+        """Выполняет шаг «evaluation counts». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         counts = {
             "total_count": len(criterion_evaluations),
             "met_count": 0,
@@ -607,7 +607,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         criterion_evaluations: list[CriterionEvaluation],
         statuses: set[CriterionEvaluationStatus],
     ) -> list[str]:
-        """Collect evidence fragments for matching criterion evaluations."""
+        """Выполняет шаг «evaluation evidence». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         evidence: list[str] = []
         for item in criterion_evaluations:
             if item.status not in statuses:
@@ -624,7 +624,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
     def _completeness_counts(
         completeness_result: CompletenessResult,
     ) -> dict[str, int]:
-        """Count completeness states."""
+        """Выполняет шаг «completeness counts». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return {
             "present_count": len(completeness_result.present_information),
             "missing_count": len(completeness_result.missing_information),
@@ -635,5 +635,5 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
     def _present_field_evidence(
         completeness_result: CompletenessResult,
     ) -> list[str]:
-        """Collect evidence-like references for present completeness fields."""
+        """Выполняет шаг «present field evidence». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return [item.title for item in completeness_result.present_information]

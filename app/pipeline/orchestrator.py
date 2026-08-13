@@ -1,4 +1,4 @@
-"""End-to-end brief analysis pipeline orchestration."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -22,18 +22,18 @@ from app.tracing.tracing import TracingClient, get_tracing_client
 
 
 class ContextStage(Protocol):
-    """Minimal contract for stages that transform AIContext."""
+    """Класс «ContextStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Return an updated AIContext."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
 
 
 class BriefAnalysisPipelineError(RuntimeError):
-    """Raised when the end-to-end brief analysis pipeline fails."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class BriefAnalysisPipeline:
-    """Run all active stages needed to analyze one project brief."""
+    """Класс «BriefAnalysisPipeline» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(
         self,
@@ -42,7 +42,7 @@ class BriefAnalysisPipeline:
         criteria_config: CriteriaConfig | None = None,
         input_factory: BriefInputFactory | None = None,
     ) -> None:
-        """Create a pipeline from injected stages or default production stages."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         self._criteria_config = criteria_config or get_criteria_config()
         self._input_factory = input_factory or BriefInputFactory()
         self._stages = list(stages) if stages is not None else []
@@ -61,7 +61,7 @@ class BriefAnalysisPipeline:
         model_name: str | None = None,
         input_factory: BriefInputFactory | None = None,
     ) -> "BriefAnalysisPipeline":
-        """Create the default production pipeline around one shared LLM client."""
+        """Выполняет шаг «from llm client». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         tracing = tracing_client or get_tracing_client()
         config = criteria_config or get_criteria_config()
         prompts = prompt_manager or PromptManager()
@@ -98,7 +98,7 @@ class BriefAnalysisPipeline:
                     criteria_config=config,
                     tracing_client=tracing,
                 ),
-                # This stage is deterministic and uses question_templates.json.
+                # Этот этап детерминированный: он работает без ИИ и берет шаблоны вопросов из question_templates.json.
                 TemplateQuestionGeneratorStage(tracing_client=tracing),
                 MVPPlannerStage(
                     llm_runner=llm_runner,
@@ -114,18 +114,18 @@ class BriefAnalysisPipeline:
         )
 
     def analyze_text(self, text: str) -> BriefAnalysisResult:
-        """Normalize and analyze a brief passed as raw text."""
+        """Выполняет шаг «analyze text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.analyze(self._input_factory.from_text(text))
 
     def analyze(self, brief_input: BriefInput) -> BriefAnalysisResult:
-        """Analyze a validated brief and return the public JSON model."""
+        """Выполняет шаг «analyze». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         context = self.run_context(brief_input)
         if context.final_response_payload is None:
             raise BriefAnalysisPipelineError("Pipeline did not produce final payload")
         return BriefAnalysisResult.model_validate(context.final_response_payload)
 
     def run_context(self, brief_input: BriefInput) -> AIContext:
-        """Run all configured stages and return the final AIContext."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         context = AIContext.from_brief(
             brief_input,
             configuration=self._criteria_config,

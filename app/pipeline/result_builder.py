@@ -1,4 +1,4 @@
-"""Build the product-facing JSON result from AIContext."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -14,11 +14,11 @@ from app.schemas import (
 
 
 class BriefAnalysisResultError(RuntimeError):
-    """Raised when the final product-facing result cannot be built."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class BriefAnalysisResultBuilder:
-    """Convert internal pipeline models into the required public JSON shape."""
+    """Класс «BriefAnalysisResultBuilder» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     _STATUS_MAP = {
         DecisionStatus.accept: "accept",
@@ -29,7 +29,7 @@ class BriefAnalysisResultBuilder:
     }
 
     def build(self, context: AIContext) -> BriefAnalysisResult:
-        """Build a validated result for one analyzed brief."""
+        """Выполняет шаг «build». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         self._validate_context(context)
         extracted = context.extracted_brief
         assessment = context.assessment_result
@@ -103,7 +103,7 @@ class BriefAnalysisResultBuilder:
 
     @staticmethod
     def _validate_context(context: AIContext) -> None:
-        """Ensure all mandatory pipeline stages have populated the context."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if context.extracted_brief is None:
             raise BriefAnalysisResultError("Final result requires extracted_brief")
         if context.completeness_result is None:
@@ -132,7 +132,7 @@ class BriefAnalysisResultBuilder:
 
     @staticmethod
     def _fact_value(fact: ExtractedFact) -> str | None:
-        """Return a normalized value from an extracted fact."""
+        """Выполняет шаг «fact value». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if fact.value is None:
             return None
         value = fact.value.strip()
@@ -140,14 +140,14 @@ class BriefAnalysisResultBuilder:
 
     @classmethod
     def _fact_values(cls, facts: list[ExtractedFact]) -> list[str]:
-        """Return normalized non-empty values from extracted facts."""
+        """Выполняет шаг «fact values». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return cls._deduplicate(
             [value for fact in facts if (value := cls._fact_value(fact))]
         )
 
     @staticmethod
     def _normalize_direction(value: str | None) -> str | None:
-        """Normalize common direction names without rejecting model wording."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         if value is None:
             return None
         normalized = " ".join(value.lower().split())
@@ -172,7 +172,7 @@ class BriefAnalysisResultBuilder:
 
     @staticmethod
     def _confidence_label(value: float | None) -> str:
-        """Convert numeric confidence into the public low/medium/high scale."""
+        """Выполняет шаг «confidence label». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if value is None:
             return "medium"
         if value < 0.45:
@@ -182,7 +182,7 @@ class BriefAnalysisResultBuilder:
         return "high"
 
     def _build_summary(self, context: AIContext) -> str:
-        """Build a compact project summary from assessment or extracted facts."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         if context.assessment_result and context.assessment_result.summary:
             return context.assessment_result.summary
 
@@ -199,7 +199,7 @@ class BriefAnalysisResultBuilder:
 
     @staticmethod
     def _format_mvp_suggestion(context: AIContext) -> str:
-        """Return a readable MVP suggestion if the MVP planner produced one."""
+        """Выполняет шаг «format mvp suggestion». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if (
             context.arbitration_result is None
             or context.arbitration_result.final_status is not DecisionStatus.simplify
@@ -224,7 +224,7 @@ class BriefAnalysisResultBuilder:
 
     @staticmethod
     def _deduplicate(values: list[str]) -> list[str]:
-        """Deduplicate strings while preserving order."""
+        """Выполняет шаг «deduplicate». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         result: list[str] = []
         seen: set[str] = set()
         for value in values:

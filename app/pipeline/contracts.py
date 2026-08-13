@@ -1,4 +1,4 @@
-"""Common pipeline contracts and lifecycle helpers."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -14,16 +14,11 @@ TOutput = TypeVar("TOutput")
 
 
 class StageExecutionError(RuntimeError):
-    """Raised when a stage fails at the shared lifecycle boundary."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class BaseStage(ABC, Generic[TInput, TOutput]):
-    """Base lifecycle for all pipeline stages, including non-LLM stages.
-
-    ``run`` is the single public lifecycle method because pipeline orchestration
-    reads naturally as a sequence of stage runs, while ``_run`` keeps concrete
-    business logic isolated in subclasses.
-    """
+    """Класс «BaseStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(
         self,
@@ -32,18 +27,18 @@ class BaseStage(ABC, Generic[TInput, TOutput]):
         tracing_client: TracingClient | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
-        """Initialize shared logging and tracing infrastructure."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         self._stage_name = stage_name or self.__class__.__name__
         self._tracing_client = tracing_client or get_tracing_client()
         self._logger = logger or logging.getLogger(self.__class__.__module__)
 
     @property
     def stage_name(self) -> str:
-        """Return the stable stage name used in logs and traces."""
+        """Выполняет шаг «stage name». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._stage_name
 
     def run(self, stage_input: TInput) -> TOutput:
-        """Execute the stage with shared logging, tracing and error handling."""
+        """[ЗАПУСК РОБОТА] Главная команда этапа: она заставляет этого робота выполнить свою работу и вернуть результат в формате, который понимает следующий участок конвейера."""
         trace_input = self._build_trace_input(stage_input)
         self._logger.info("%s started", self._stage_name)
 
@@ -74,17 +69,17 @@ class BaseStage(ABC, Generic[TInput, TOutput]):
 
     @abstractmethod
     def _run(self, stage_input: TInput) -> TOutput:
-        """Execute concrete stage logic without cross-cutting concerns."""
+        """[ЗАПУСК РОБОТА] Главная команда этапа: она заставляет этого робота выполнить свою работу и вернуть результат в формате, который понимает следующий участок конвейера."""
 
     def _build_trace_input(self, stage_input: TInput) -> dict[str, Any]:
-        """Build safe trace metadata without serializing user payloads by default."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return {
             "stage": self._stage_name,
             "input_type": type(stage_input).__name__,
         }
 
     def _build_trace_output(self, stage_output: TOutput) -> dict[str, Any]:
-        """Build safe trace output metadata without serializing full results."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return {
             "status": "success",
             "stage": self._stage_name,
@@ -92,14 +87,14 @@ class BaseStage(ABC, Generic[TInput, TOutput]):
         }
 
     def _build_stage_exception(self, exc: Exception) -> Exception:
-        """Convert implementation errors into a stage-level exception."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         if isinstance(exc, StageExecutionError):
             return exc
         return StageExecutionError(f"{self._stage_name} failed: {exc}")
 
 
 class PipelineStage(Protocol):
-    """Common contract for stages that transform AIContext by copy."""
+    """Класс «PipelineStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Return context enriched with this stage output."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""

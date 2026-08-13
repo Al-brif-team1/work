@@ -1,4 +1,4 @@
-"""Knowledge base infrastructure exports."""
+"""Модуль базы знаний. Он готовит, индексирует и ищет справочные материалы, чтобы ИИ-этапы опирались не только на бриф, но и на контекст проекта."""
 
 from app.knowledge.chunker import Chunk, TextChunker
 from app.knowledge.chroma_store import ChromaVectorStore, VectorStoreError

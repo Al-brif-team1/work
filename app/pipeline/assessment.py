@@ -1,4 +1,4 @@
-"""Preparation contracts for the unified Assessment stage."""
+"""Модуль этапа конвейера ИИ-ассистента для анализа проектных брифов. Здесь код работает как участок большого завода: каждый класс отвечает за свою роль и передает результат дальше."""
 
 from __future__ import annotations
 
@@ -36,15 +36,15 @@ if TYPE_CHECKING:
 
 
 class AssessmentError(RuntimeError):
-    """Raised when assessment input cannot be prepared."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class AssessmentConfigError(AssessmentError):
-    """Raised when assessment criteria configuration is missing or invalid."""
+    """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
 class AssessmentRetriever(Protocol):
-    """Retriever contract used by the future Assessment component."""
+    """Класс «AssessmentRetriever» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def retrieve(
         self,
@@ -52,16 +52,11 @@ class AssessmentRetriever(Protocol):
         top_k: int | None = None,
         metadata_filters: Mapping[str, object] | None = None,
     ) -> list[SearchResult]:
-        """Return relevant knowledge chunks for an assessment query."""
+        """Выполняет шаг «retrieve». Документация описывает назначение метода, а сама логика остается в коде ниже."""
 
 
 class AssessmentPreparedInput(BaseModel):
-    """Validated input for the future BaseLLMStage-backed Assessment.
-
-    The concrete Assessment stage should use this model as its stage input,
-    ``AssessmentPayload`` as the LLM structured output model, and convert it to
-    ``AssessmentResult`` during post-processing.
-    """
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     context: AIContext
     criteria_config: CriteriaConfig
@@ -75,16 +70,16 @@ class AssessmentPreparedInput(BaseModel):
 
     @property
     def criteria_count(self) -> int:
-        """Return the number of criteria available for assessment."""
+        """Выполняет шаг «criteria count». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return len(self.criteria)
 
     @property
     def risk_types_count(self) -> int:
-        """Return the number of configured risk types."""
+        """Выполняет шаг «risk types count». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return len(self.risk_types)
 
     def to_prompt_context(self) -> dict[str, Any]:
-        """Serialize prepared input for a future prompt renderer."""
+        """Преобразует данные в другой формат. Это нужно, чтобы соседний слой системы получил информацию в удобном для себя виде."""
         return {
             "brief": self.context.brief_input.model_dump(mode="json"),
             "extracted_brief": (
@@ -108,7 +103,7 @@ class AssessmentPreparedInput(BaseModel):
 class AssessmentStage(
     BaseLLMStage[AssessmentPreparedInput, AssessmentPayload, AssessmentResult]
 ):
-    """Unified LLM stage that evaluates criteria and risks."""
+    """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Эксперт-аналитик. Он через ИИ ищет риски, сложности и соответствие критериям проекта. Этот этап обращается к LLM, поэтому внутри работает ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseLLMStage, поэтому он умеет работать в нашем конвейере."""
 
     output_model: ClassVar[type[AssessmentPayload]] = AssessmentPayload
 
@@ -127,7 +122,7 @@ class AssessmentStage(
         criteria_config: CriteriaConfig | None = None,
         criteria_path: str | Path | None = None,
     ) -> None:
-        """Initialize Assessment with LLM transport and deterministic preparation."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         super().__init__(
             llm_client=llm_client,
             tracing_client=tracing_client,
@@ -153,7 +148,7 @@ class AssessmentStage(
         top_k: int | None = None,
         metadata_filters: Mapping[str, object] | None = None,
     ) -> AIContext:
-        """Return context enriched with a unified assessment result."""
+        """Выполняет шаг «assess». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         prepared = self._preparation.prepare(
             context,
             top_k=top_k,
@@ -162,35 +157,35 @@ class AssessmentStage(
         return prepared.context.with_assessment_result(self.run(prepared))
 
     def run_context(self, context: AIContext) -> AIContext:
-        """Run this stage using the common AIContext pipeline contract."""
+        """[ЗАПУСК РОБОТА] Запускает этап на общем AIContext. Так каждый робот получает одну и ту же коробку с деталями конструктора, добавляет свой результат и передает ее дальше."""
         return self.assess(context)
 
     @property
     def trace_name(self) -> str:
-        """Return the Langfuse trace name for unified assessment."""
+        """Выполняет шаг «trace name». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return "assessment.brief"
 
     @property
     def span_name(self) -> str:
-        """Return the Langfuse span name for the assessment LLM call."""
+        """Выполняет шаг «span name». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return "assessment.llm"
 
     def build_prompt(self, stage_input: AssessmentPreparedInput) -> str:
-        """Render the user prompt from deterministic assessment inputs."""
+        """Выполняет шаг «build prompt». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         rendered = self._render_assessment_prompt(stage_input)
         return rendered.user or rendered.system
 
     def build_system_prompt(self, stage_input: AssessmentPreparedInput) -> str | None:
-        """Render the system prompt when the template has a user section."""
+        """Выполняет шаг «build system prompt». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         rendered = self._render_assessment_prompt(stage_input)
         return rendered.system if rendered.user is not None else None
 
     def build_context(self, stage_input: AssessmentPreparedInput) -> None:
-        """Do not duplicate transport context; prompt rendering owns input data."""
+        """Выполняет шаг «build context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return None
 
     def build_trace_input(self, stage_input: AssessmentPreparedInput) -> dict[str, Any]:
-        """Build trace metadata without serializing the full brief or retrieved text."""
+        """Выполняет шаг «build trace input». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         metadata = {
             "prompt_name": self.prompt_name,
             "prompt_version": self.prompt_version,
@@ -208,7 +203,7 @@ class AssessmentStage(
         self,
         result: LLMRunResult[AssessmentPayload],
     ) -> AssessmentResult:
-        """Convert the shared LLM result into unified assessment output."""
+        """Выполняет шаг «postprocess». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         payload = self._normalize_payload(result.payload)
         return AssessmentResult(
             criterion_evaluations=payload.criterion_evaluations,
@@ -240,7 +235,7 @@ class AssessmentStage(
 
     @staticmethod
     def _default_prompt_path() -> Path:
-        """Return the default prompt template path."""
+        """Возвращает значение по умолчанию, чтобы этап мог работать без ручной настройки."""
         return Path(__file__).resolve().parents[2] / "prompts" / "assessment.md"
 
     def _build_failure_exception(
@@ -248,14 +243,14 @@ class AssessmentStage(
         attempts: int,
         last_error: Exception | None,
     ) -> Exception:
-        """Build the assessment-specific failure exception."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return AssessmentError(f"Unable to assess brief after {attempts} attempts")
 
     def _render_assessment_prompt(
         self,
         stage_input: AssessmentPreparedInput,
     ) -> RenderedPrompt:
-        """Render the configured Assessment prompt through PromptManager."""
+        """Готовит человекочитаемый текст из внутренних данных. Это нужно для промптов, объяснений или финального ответа."""
         return self._render_prompt(
             {
                 "normalized_brief": stage_input.context.normalized_text,
@@ -275,7 +270,7 @@ class AssessmentStage(
         )
 
     def _normalize_payload(self, payload: AssessmentPayload) -> AssessmentPayload:
-        """Apply minimal cleanup without adding deterministic business decisions."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return payload.model_copy(
             update={
                 "criterion_evaluations": [
@@ -297,7 +292,7 @@ class AssessmentStage(
         cls,
         item: CriterionEvaluation,
     ) -> CriterionEvaluation:
-        """Trim criterion evaluation strings and evidence fragments."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return item.model_copy(
             update={
                 "criterion": item.criterion.strip(),
@@ -310,7 +305,7 @@ class AssessmentStage(
 
     @classmethod
     def _normalize_risk(cls, item: Risk) -> Risk:
-        """Trim risk strings and evidence fragments."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return item.model_copy(
             update={
                 "type": item.type.strip(),
@@ -322,7 +317,7 @@ class AssessmentStage(
 
     @classmethod
     def _normalize_evidence(cls, item: AssessmentEvidence) -> AssessmentEvidence:
-        """Trim evidence strings and related identifier lists."""
+        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return item.model_copy(
             update={
                 "source": item.source.strip(),
@@ -334,7 +329,7 @@ class AssessmentStage(
 
     @staticmethod
     def _strip_optional_text(value: str | None) -> str | None:
-        """Trim optional strings and normalize blank values to None."""
+        """Выполняет шаг «strip optional text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if value is None:
             return None
         value = value.strip()
@@ -342,12 +337,12 @@ class AssessmentStage(
 
     @staticmethod
     def _strip_text_list(values: list[str]) -> list[str]:
-        """Trim strings and remove blank values."""
+        """Выполняет шаг «strip text list». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return [value.strip() for value in values if value and value.strip()]
 
 
 class AssessmentPreparation:
-    """Prepare all deterministic inputs required by the future Assessment stage."""
+    """Класс «AssessmentPreparation» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(
         self,
@@ -355,7 +350,7 @@ class AssessmentPreparation:
         criteria_config: CriteriaConfig | None = None,
         criteria_path: str | Path | None = None,
     ) -> None:
-        """Create assessment preparation with optional retriever and config source."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         if criteria_config is not None and criteria_path is not None:
             raise ValueError("Pass either criteria_config or criteria_path, not both")
 
@@ -366,22 +361,22 @@ class AssessmentPreparation:
 
     @property
     def criteria_config(self) -> CriteriaConfig:
-        """Return the validated criteria configuration."""
+        """Выполняет шаг «criteria config». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._config
 
     @property
     def criteria(self) -> list[Criterion]:
-        """Return configured criteria in deterministic order."""
+        """Выполняет шаг «criteria». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return list(self._criteria)
 
     @property
     def risk_types(self) -> list[RiskType]:
-        """Return configured risk types in deterministic order."""
+        """Выполняет шаг «risk types». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return list(self._risk_types)
 
     @property
     def retriever_used(self) -> bool:
-        """Return whether Assessment preparation has an active retriever."""
+        """Выполняет шаг «retriever used». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._retriever is not None
 
     def prepare(
@@ -391,7 +386,7 @@ class AssessmentPreparation:
         top_k: int | None = None,
         metadata_filters: Mapping[str, object] | None = None,
     ) -> AssessmentPreparedInput:
-        """Prepare context, criteria and optional retrieved knowledge for assessment."""
+        """Выполняет шаг «prepare». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         self._validate_context(context)
         retrieval_query = self._build_retrieval_query(context)
         retrieved_context = self._retrieve_context(
@@ -420,7 +415,7 @@ class AssessmentPreparation:
         top_k: int | None,
         metadata_filters: Mapping[str, object] | None,
     ) -> list[SearchResult]:
-        """Retrieve fresh context or reuse context accumulated by earlier stages."""
+        """Выполняет шаг «retrieve context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if self._retriever is None:
             return list(context.retrieved_context)
 
@@ -432,7 +427,7 @@ class AssessmentPreparation:
 
     @staticmethod
     def _build_retrieval_query(context: AIContext) -> str:
-        """Build a retrieval query from normalized brief and upstream signals."""
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         parts: list[str] = [context.normalized_text]
 
         if context.extracted_brief is not None:
@@ -453,7 +448,7 @@ class AssessmentPreparation:
 
     @staticmethod
     def _validate_context(context: AIContext) -> None:
-        """Ensure the upstream pipeline has produced required assessment inputs."""
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
         if context.extracted_brief is None:
             raise AssessmentError("Assessment requires extracted_brief in AIContext")
         if context.completeness_result is None:
@@ -464,7 +459,7 @@ class AssessmentPreparation:
         criteria_config: CriteriaConfig | None,
         criteria_path: str | Path | None,
     ) -> CriteriaConfig:
-        """Load and validate criteria/risk definitions for Assessment."""
+        """Выполняет шаг «load config». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if criteria_config is not None:
             config = criteria_config
         elif criteria_path is not None:

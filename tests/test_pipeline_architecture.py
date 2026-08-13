@@ -1,4 +1,4 @@
-"""Architecture tests for the shared AI pipeline contracts."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from app.tracing.tracing import NoOpTracingClient
 
 
 class FakeLLMRunner:
-    """LLMRunner double used to verify BaseLLMStage dependency injection."""
+    """Класс «FakeLLMRunner» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(self, payload: ExtractedBrief) -> None:
         self.payload = payload
@@ -67,7 +67,7 @@ class FakeLLMRunner:
 
 
 def make_extracted_brief() -> ExtractedBrief:
-    """Create extracted brief data used by architecture tests."""
+    """Выполняет шаг «make extracted brief». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return ExtractedBrief(
         project_goal=ExtractedFact(
             status=FactStatus.explicit,
@@ -105,7 +105,7 @@ def make_extracted_brief() -> ExtractedBrief:
 
 
 def make_complete_result() -> CompletenessResult:
-    """Create a complete result for deterministic arbitration tests."""
+    """Выполняет шаг «make complete result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return CompletenessResult(
         is_complete=True,
         missing_information=[],
@@ -125,7 +125,7 @@ def make_complete_result() -> CompletenessResult:
 
 
 def make_assessment_result() -> AssessmentResult:
-    """Create unified assessment output that should lead to ACCEPT."""
+    """Выполняет шаг «make assessment result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return AssessmentResult(
         criterion_evaluations=[
             CriterionEvaluation(
@@ -151,7 +151,7 @@ def make_assessment_result() -> AssessmentResult:
 
 
 class TestPipelineArchitecture(unittest.TestCase):
-    """Tests for current shared AI pipeline contracts."""
+    """Класс «TestPipelineArchitecture» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_llm_stage_can_use_injected_runner_without_client(self) -> None:
         runner = FakeLLMRunner(make_extracted_brief())

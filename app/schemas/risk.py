@@ -1,4 +1,4 @@
-"""Models for risk analysis results."""
+"""Модуль структур данных для конвейера анализа брифов. Эти модели помогают хранить информацию аккуратно, чтобы этапы не перепутали факты, статусы и технические детали."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class RiskSeverity(str, Enum):
-    """Severity levels for identified risks."""
+    """Класс «RiskSeverity» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     low = "low"
     medium = "medium"
@@ -17,7 +17,7 @@ class RiskSeverity(str, Enum):
 
 
 class Risk(BaseModel):
-    """A single risk identified by the risk analyst."""
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     type: str
     description: str

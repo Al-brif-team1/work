@@ -1,4 +1,4 @@
-"""Tests for the clarification question generator."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from app.schemas import (
 
 
 def make_missing_item(field_key: str, title: str) -> CompletenessItem:
-    """Create a missing completeness item."""
+    """Выполняет шаг «make missing item». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return CompletenessItem(
         field_key=field_key,
         field_path=field_key,
@@ -31,7 +31,7 @@ def make_missing_item(field_key: str, title: str) -> CompletenessItem:
 def make_completeness_result(
     missing_information: list[CompletenessItem],
 ) -> CompletenessResult:
-    """Create a completeness result for tests."""
+    """Выполняет шаг «make completeness result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return CompletenessResult(
         is_complete=not missing_information,
         missing_information=missing_information,
@@ -52,7 +52,7 @@ def make_completeness_result(
 
 
 class TestTemplateQuestionGeneratorStage(unittest.TestCase):
-    """Unit tests for the clarification question generator."""
+    """Класс «TestTemplateQuestionGeneratorStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_returns_empty_questions_for_complete_brief(self) -> None:
         stage = TemplateQuestionGeneratorStage()

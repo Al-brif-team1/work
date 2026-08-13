@@ -9,7 +9,7 @@ SecurityStatus = Literal["safe", "warning", "blocked"]
 
 @dataclass(frozen=True)
 class SecurityPipelineResult:
-    """Result of applying PII sanitization and injection detection."""
+    """Класс «SecurityPipelineResult» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     status: SecurityStatus
     safe: bool
@@ -21,19 +21,19 @@ class SecurityPipelineResult:
 
 
 class SecurityPipeline:
-    """Runs configured security checks before text reaches an LLM."""
+    """Класс «SecurityPipeline» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def __init__(
         self,
         pii_sanitizer: PIISanitizer | None = None,
         injection_detector: InjectionDetector | None = None,
     ) -> None:
-        """Initialize the pipeline with optional custom components."""
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         self._pii_sanitizer = pii_sanitizer or PIISanitizer()
         self._injection_detector = injection_detector or InjectionDetector()
 
     def process(self, text: str) -> SecurityPipelineResult:
-        """Sanitize text and return injection risk information."""
+        """[ЗАПУСК РОБОТА] Главная команда этапа: она заставляет этого робота выполнить свою работу и вернуть результат в формате, который понимает следующий участок конвейера."""
         sanitized_text = self._pii_sanitizer.sanitize(text)
         injection_result = self._injection_detector.detect(sanitized_text)
         restoration_map = self._pii_sanitizer.mapping

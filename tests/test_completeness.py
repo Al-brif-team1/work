@@ -1,4 +1,4 @@
-"""Tests for the completeness check stage."""
+"""Пакет проекта ИИ-ассистента для анализа проектных брифов Мастерской."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from app.schemas import (
 
 
 def fact(value: str | None, status: FactStatus = FactStatus.explicit) -> ExtractedFact:
-    """Create a compact extracted fact for tests."""
+    """Выполняет шаг «fact». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return ExtractedFact(
         status=status,
         value=value,
@@ -46,7 +46,7 @@ def make_brief(
     expected_result: ExtractedFact,
     technologies: list[ExtractedFact] | None = None,
 ) -> ExtractedBrief:
-    """Create a minimal extracted brief for completeness tests."""
+    """Выполняет шаг «make brief». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return ExtractedBrief(
         project_goal=project_goal,
         tasks=tasks,
@@ -65,7 +65,7 @@ def make_brief(
 
 
 def write_criteria_yaml(path: Path, project_type_key: str = "web_app") -> None:
-    """Write a temporary criteria YAML file for tests."""
+    """Выполняет шаг «write criteria yaml». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     path.write_text(
         dedent(
             f"""
@@ -139,7 +139,7 @@ def write_criteria_yaml(path: Path, project_type_key: str = "web_app") -> None:
 
 
 class TestCompletenessCheckStage(unittest.TestCase):
-    """Unit tests for completeness checking."""
+    """Класс «TestCompletenessCheckStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def setUp(self) -> None:
         self.tmpdir = tempfile.TemporaryDirectory()
