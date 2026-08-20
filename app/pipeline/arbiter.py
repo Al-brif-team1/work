@@ -98,9 +98,21 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             risks=risks,
             criterion_evaluations=criterion_evaluations,
         )
+        diagnostics = self._build_arbitration_diagnostics(
+            completeness_result=completeness_result,
+            signals=signals,
+        )
+        self._print_arbitration_diagnostics(
+            diagnostics=diagnostics,
+            matched_rule_key=None,
+        )
 
         for rule in self._arbitration.rules:
             if self._rule_matches(rule, signals):
+                self._print_arbitration_diagnostics(
+                    diagnostics=diagnostics,
+                    matched_rule_key=rule.key,
+                )
                 return self._build_result(
                     rule=rule,
                     signals=signals,
@@ -108,6 +120,11 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
                 )
 
         default_status = self._parse_status(self._arbitration.default_status)
+        self._print_arbitration_diagnostics(
+            diagnostics=diagnostics,
+            matched_rule_key=None,
+            default_status=default_status.value,
+        )
         return ArbitrationResult(
             final_status=default_status,
             reasons=[
@@ -243,6 +260,133 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             self._condition_matches(condition, signals.get(condition.field))
             for condition in rule.conditions
         )
+
+    def _build_arbitration_diagnostics(
+        self,
+        completeness_result: CompletenessResult,
+        signals: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build temporary arbitration diagnostics without changing arbitration logic."""
+        actuals = {
+            "completeness.is_complete": signals.get("completeness.is_complete"),
+            "completeness.missing_count": signals.get("completeness.missing_count"),
+            "completeness.critical_missing_count": len(
+                completeness_result.critical_missing_information
+            ),
+            "completeness.clarification_count": signals.get(
+                "completeness.clarification_count"
+            ),
+            "risk.total_count": signals.get("risk.total_count"),
+            "risk.max_severity": signals.get("risk.max_severity"),
+            "risk.low_count": signals.get("risk.low_count"),
+            "risk.medium_count": signals.get("risk.medium_count"),
+            "risk.high_count": signals.get("risk.high_count"),
+            "risk.critical_count": signals.get("risk.critical_count"),
+            "evaluation.total_count": signals.get("evaluation.total_count"),
+            "evaluation.met_count": signals.get("evaluation.met_count"),
+            "evaluation.not_met_count": signals.get("evaluation.not_met_count"),
+            "evaluation.insufficient_information_count": signals.get(
+                "evaluation.insufficient_information_count"
+            ),
+            "evaluation.risk_detected_count": signals.get(
+                "evaluation.risk_detected_count"
+            ),
+        }
+        rules = []
+        for rule in self._arbitration.rules:
+            condition_results = []
+            failed_conditions = []
+            for condition in rule.conditions:
+                actual = signals.get(condition.field)
+                passed = self._condition_matches(condition, actual)
+                condition_result = {
+                    "field": condition.field,
+                    "operator": condition.operator,
+                    "expected": condition.value,
+                    "actual": actual,
+                    "passed": passed,
+                }
+                condition_results.append(condition_result)
+                if not passed:
+                    failed_conditions.append(condition_result)
+            rules.append(
+                {
+                    "key": rule.key,
+                    "target_status": rule.status,
+                    "conditions": condition_results,
+                    "rejected_because": failed_conditions,
+                }
+            )
+        return {
+            "actuals": actuals,
+            "rules": rules,
+            "default_status": self._arbitration.default_status,
+        }
+
+    def _print_arbitration_diagnostics(
+        self,
+        diagnostics: dict[str, Any],
+        matched_rule_key: str | None,
+        default_status: str | None = None,
+    ) -> None:
+        """Print temporary arbitration diagnostics to stdout."""
+        if matched_rule_key is not None:
+            print(
+                "[ARBITRATION DIAGNOSTICS] result: "
+                f"matched_rule={matched_rule_key}"
+            )
+            return
+
+        if default_status is not None:
+            print("[ARBITRATION DIAGNOSTICS] result: no rule matched")
+            for rule in diagnostics["rules"]:
+                failed_conditions = rule["rejected_because"]
+                if not failed_conditions:
+                    continue
+                reasons = [
+                    (
+                        f"{condition['field']} "
+                        f"actual={self._format_diagnostic_value(condition['actual'])} "
+                        f"operator={condition['operator']} "
+                        f"expected={self._format_diagnostic_value(condition['expected'])}"
+                    )
+                    for condition in failed_conditions
+                ]
+                print(
+                    "  "
+                    f"rule={rule['key']} rejected: "
+                    f"{'; '.join(reasons)}"
+                )
+            print(
+                "[ARBITRATION DIAGNOSTICS] default_status used: "
+                f"{default_status} because no arbitration rule matched"
+            )
+            return
+
+        print("[ARBITRATION DIAGNOSTICS] actual values used by arbiter:")
+        for field, value in diagnostics["actuals"].items():
+            print(
+                "  "
+                f"{field}: actual={self._format_diagnostic_value(value)}"
+            )
+
+        print("[ARBITRATION DIAGNOSTICS] rules:")
+        for rule in diagnostics["rules"]:
+            print(
+                "  "
+                f"rule={rule['key']} target_status={rule['target_status']}"
+            )
+            if rule["key"] == "accept_ready":
+                print("    accept_ready detailed conditions:")
+            for condition in rule["conditions"]:
+                result = "PASS" if condition["passed"] else "FAIL"
+                print(
+                    "    "
+                    f"{condition['field']}: "
+                    f"actual={self._format_diagnostic_value(condition['actual'])}, "
+                    f"expected={self._format_diagnostic_value(condition['expected'])}, "
+                    f"operator={condition['operator']} -> {result}"
+                )
 
     def _condition_matches(
         self,
@@ -451,6 +595,13 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             f"{condition.field} {condition.operator} "
             f"{condition.value!r}"
         )
+
+    @staticmethod
+    def _format_diagnostic_value(value: Any) -> str:
+        """Format temporary arbitration diagnostics for stdout."""
+        if isinstance(value, bool):
+            return str(value).lower()
+        return repr(value)
 
     @staticmethod
     def _normalize_value(value: Any, case_sensitive: bool) -> Any:
