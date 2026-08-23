@@ -613,9 +613,11 @@ OpenAI SDK с base_url=https://openrouter.ai/api/v1
 
 ## `OpenRouterLLMClient`
 
-Этот класс реализует `LLMClient` через OpenAI SDK, но с `base_url` OpenRouter.
+Этот класс реализует `LLMClient` через OpenAI SDK, адрес API задаётся настройкой.
 
-Он получает `Settings`, берёт из них `openrouter_api_key` и `openrouter_model`, создаёт `OpenAI(...)`.
+Он получает `Settings`, берёт из них `llm_api_key`, `llm_model` и `llm_base_url`, создаёт `OpenAI(...)`. Туда же уходят транспортные настройки — `llm_timeout_seconds` и `llm_transport_retries`.
+
+Параметры генерации (`llm_temperature`, `llm_max_tokens`, `llm_top_p`) в конструктор `OpenAI` передать нельзя: это параметры тела запроса. Клиент держит их у себя и подмешивает в каждый вызов, поэтому они действуют и на `generate()`, и на `generate_json()`, и на `stream()`. Аргументы конкретного вызова перекрывают эти значения.
 
 Секреты в документации не раскрываются. В коде они берутся из `.env` через `Settings`.
 
@@ -1717,8 +1719,11 @@ Config.load()
      ├── load_dotenv()
      ├── Settings(_env_file=...)
      └── Settings
-          ├── openrouter_api_key
-          ├── openrouter_model
+          ├── llm_api_key
+          ├── llm_model
+          ├── llm_base_url
+          ├── llm_* (temperature, max_tokens, top_p)
+          ├── llm_* (max_attempts, timeout_seconds, transport_retries)
           ├── langfuse_*
           ├── debug
           ├── log_level
@@ -1727,7 +1732,9 @@ Config.load()
 
 `pydantic_settings.BaseSettings` умеет брать значения из переменных окружения и `.env`.
 
-`Field(..., alias="OPENROUTER_API_KEY")` означает, что поле обязательно и читается из переменной `OPENROUTER_API_KEY`.
+`Field(..., alias="LLM_API_KEY")` означает, что поле обязательно и читается из переменной `LLM_API_KEY`. Обязательных полей три: `LLM_API_KEY`, `LLM_MODEL` и `LLM_BASE_URL` — у остальных есть значения по умолчанию.
+
+Валидаторы полей отсекают заведомо неверные настройки на старте: температура вне диапазона `0..2`, неположительные `LLM_MAX_ATTEMPTS` и `LLM_TIMEOUT_SECONDS`, `LLM_TOP_P` вне `(0, 1]`, а также `LLM_BASE_URL` без схемы `http://` или `https://`.
 
 `Literal["DEBUG", "INFO", ...]` ограничивает допустимые уровни логирования.
 

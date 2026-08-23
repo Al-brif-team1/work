@@ -13,11 +13,32 @@ class OpenRouterLLMClient(LLMClient):
 
     def __init__(self, settings: Settings) -> None:
         """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
-        self._model = settings.openrouter_model
+        self._model = settings.llm_model
+        # Параметры генерации нельзя задать в конструкторе OpenAI: он принимает только
+        # транспортные настройки. Поэтому держим их здесь и подмешиваем в каждый запрос.
+        self._generation_defaults = self._build_generation_defaults(settings)
         self._client = OpenAI(
-            api_key=settings.openrouter_api_key,
-            base_url="https://openrouter.ai/api/v1",
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            timeout=settings.llm_timeout_seconds,
+            max_retries=settings.llm_transport_retries,
         )
+
+    @staticmethod
+    def _build_generation_defaults(settings: Settings) -> dict[str, Any]:
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
+        defaults: dict[str, Any] = {"temperature": settings.llm_temperature}
+        if settings.llm_max_tokens is not None:
+            defaults["max_tokens"] = settings.llm_max_tokens
+        if settings.llm_top_p is not None:
+            defaults["top_p"] = settings.llm_top_p
+
+        return defaults
+
+    def _merge_generation_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
+        # Настройки задают базу, аргументы конкретного вызова ее перекрывают.
+        return {**self._generation_defaults, **kwargs}
 
     def generate(
         self,
@@ -28,7 +49,7 @@ class OpenRouterLLMClient(LLMClient):
         response = self._client.chat.completions.create(
             model=self._model,
             messages=list(messages),
-            **kwargs,
+            **self._merge_generation_kwargs(kwargs),
         )
 
         content = response.choices[0].message.content
@@ -67,7 +88,7 @@ class OpenRouterLLMClient(LLMClient):
             model=self._model,
             messages=list(messages),
             stream=True,
-            **kwargs,
+            **self._merge_generation_kwargs(kwargs),
         )
 
         for chunk in stream:
