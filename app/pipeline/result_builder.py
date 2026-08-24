@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from app.schemas import (
     AIContext,
     BriefAnalysisResult,
     BriefAssessmentSummary,
     BriefExtractedFields,
+    CompletenessItem,
     DecisionStatus,
     ExtractedFact,
     RiskSeverity,
@@ -15,6 +19,19 @@ from app.schemas import (
 
 class BriefAnalysisResultError(RuntimeError):
     """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
+
+
+def deduplicate(values: list[str]) -> list[str]:
+    """Убирает пустые строки и повторы, сохраняя исходный порядок. Нужна и билдеру публичного результата, и сборщику текста письма."""
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        normalized = value.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(normalized)
+    return result
 
 
 class BriefAnalysisResultBuilder:
@@ -27,6 +44,12 @@ class BriefAnalysisResultBuilder:
         DecisionStatus.mentor_review: "mentor_review",
         DecisionStatus.reject: "reject",
     }
+
+    def __init__(self, *, field_titles_path: str | Path | None = None) -> None:
+        """Подготавливает объект к работе: загружает русские названия полей брифа, потому что title в criteria.yaml английские и в результат их отдавать нельзя."""
+        self._field_titles = self._load_field_titles(
+            field_titles_path or self._default_field_titles_path()
+        )
 
     def build(self, context: AIContext) -> BriefAnalysisResult:
         """Выполняет шаг «build». Документация описывает назначение метода, а сама логика остается в коде ниже."""
@@ -49,7 +72,7 @@ class BriefAnalysisResultBuilder:
                 direction=self._normalize_direction(
                     self._fact_value(extracted.project_direction)
                 ),
-                available_materials=self._deduplicate(
+                available_materials=deduplicate(
                     [
                         *self._fact_values(extracted.materials),
                         *self._fact_values(extracted.existing_resources),
@@ -57,11 +80,12 @@ class BriefAnalysisResultBuilder:
                     ]
                 ),
                 missing_information=[
-                    item.title for item in context.completeness_result.missing_information
+                    self._field_title(item)
+                    for item in context.completeness_result.missing_information
                 ]
                 if context.completeness_result is not None
                 else [],
-                complexity_factors=self._deduplicate(
+                complexity_factors=deduplicate(
                     [
                         *self._fact_values(extracted.constraints),
                         *[
@@ -77,14 +101,11 @@ class BriefAnalysisResultBuilder:
                 confidence=self._confidence_label(
                     arbitration.confidence or assessment.confidence
                 ),
-                reasons=self._deduplicate(
+                reasons=deduplicate(
                     [
-                        *arbitration.reasons,
-                        *[
-                            item.explanation
-                            for item in assessment.criterion_evaluations
-                            if item.explanation
-                        ],
+                        item.explanation
+                        for item in assessment.criterion_evaluations
+                        if item.explanation
                     ]
                 ),
                 risks=[risk.description for risk in assessment.risks],
@@ -130,6 +151,40 @@ class BriefAnalysisResultBuilder:
                 "SIMPLIFY final result requires an MVP plan"
             )
 
+    def _field_title(self, item: CompletenessItem) -> str:
+        """Возвращает русское название поля брифа. Если перевода нет, отдаем машинный ключ: он хотя бы не выглядит английской фразой в русском отчете."""
+        return self._field_titles.get(item.field_key, item.field_key)
+
+    @staticmethod
+    def _load_field_titles(path: str | Path) -> dict[str, str]:
+        """Читает русские названия обязательных полей брифа из JSON-ресурса."""
+        titles_path = Path(path)
+        try:
+            raw = json.loads(titles_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise BriefAnalysisResultError(
+                f"Unable to load field titles: {titles_path}"
+            ) from exc
+
+        if not isinstance(raw, dict):
+            raise BriefAnalysisResultError("field titles must be a mapping")
+
+        titles: dict[str, str] = {}
+        for key, value in raw.items():
+            if not isinstance(key, str) or not key.strip():
+                raise BriefAnalysisResultError("field title keys must be strings")
+            if not isinstance(value, str) or not value.strip():
+                raise BriefAnalysisResultError(
+                    f"field title for {key!r} must be a non-empty string"
+                )
+            titles[key.strip()] = value.strip()
+        return titles
+
+    @staticmethod
+    def _default_field_titles_path() -> Path:
+        """Возвращает значение по умолчанию, чтобы этап мог работать без ручной настройки."""
+        return Path(__file__).resolve().parents[2] / "config" / "field_titles.json"
+
     @staticmethod
     def _fact_value(fact: ExtractedFact) -> str | None:
         """Выполняет шаг «fact value». Документация описывает назначение метода, а сама логика остается в коде ниже."""
@@ -141,7 +196,7 @@ class BriefAnalysisResultBuilder:
     @classmethod
     def _fact_values(cls, facts: list[ExtractedFact]) -> list[str]:
         """Выполняет шаг «fact values». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        return cls._deduplicate(
+        return deduplicate(
             [value for fact in facts if (value := cls._fact_value(fact))]
         )
 
@@ -221,16 +276,3 @@ class BriefAnalysisResultBuilder:
         if plan.mvp_scope:
             parts.append("Состав первой версии: " + "; ".join(plan.mvp_scope))
         return "\n".join(parts)
-
-    @staticmethod
-    def _deduplicate(values: list[str]) -> list[str]:
-        """Выполняет шаг «deduplicate». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        result: list[str] = []
-        seen: set[str] = set()
-        for value in values:
-            normalized = value.strip()
-            if not normalized or normalized in seen:
-                continue
-            seen.add(normalized)
-            result.append(normalized)
-        return result

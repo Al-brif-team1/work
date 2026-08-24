@@ -225,7 +225,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         )
         return ArbitrationResult(
             final_status=hit.status,
-            reasons=self._build_reasons(rule, signals),
+            reasons=self._build_reasons(rule),
             evidence=evidence,
             triggered_rules=[hit],
             confidence=rule.confidence,
@@ -236,19 +236,13 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             },
         )
 
-    def _build_reasons(
-        self,
-        rule: ArbitrationRule,
-        signals: dict[str, Any],
-    ) -> list[str]:
+    @staticmethod
+    def _build_reasons(rule: ArbitrationRule) -> list[str]:
         """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
-        rendered_conditions = [
-            self._render_condition(condition) for condition in rule.conditions
-        ]
-        reasons = [rule.description]
-        reasons.append(f"Matched conditions: {'; '.join(rendered_conditions)}")
-        reasons.append(f"Signals: {self._format_signals(rule.conditions, signals)}")
-        return reasons
+        # Условия и сигналы сюда не дублируем: они сохранены структурно
+        # в ArbitrationRuleHit.conditions и в metadata["signals"], а плоская
+        # строка нужна была только для печати в письме заказчику.
+        return [rule.description]
 
     def _rule_matches(
         self,
@@ -576,17 +570,6 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
                 if fragment not in collected:
                     collected.append(fragment)
         return collected
-
-    @staticmethod
-    def _format_signals(
-        conditions: list[ArbitrationCondition],
-        signals: dict[str, Any],
-    ) -> str:
-        """Выполняет шаг «format signals». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        parts = []
-        for condition in conditions:
-            parts.append(f"{condition.field}={signals.get(condition.field)!r}")
-        return ", ".join(parts)
 
     @staticmethod
     def _render_condition(condition: ArbitrationCondition) -> str:

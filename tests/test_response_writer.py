@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 
 from app.input import BriefInputFactory
@@ -133,6 +134,57 @@ def make_context(status: DecisionStatus = DecisionStatus.accept) -> AIContext:
     )
 
 
+ALLOWED_LATIN_WORDS = ("MVP",)
+
+
+def find_latin_words(text: str) -> list[str]:
+    """Ищет в тексте латинские слова. Нужна аббревиатура MVP, все остальное в письме заказчику - признак утечки внутренних строк."""
+    cleaned = text
+    for word in ALLOWED_LATIN_WORDS:
+        cleaned = cleaned.replace(word, " ")
+    return re.findall(r"[A-Za-z]{2,}", cleaned)
+
+
+def make_reject_context(
+    risk_severity: RiskSeverity = RiskSeverity.critical,
+) -> AIContext:
+    """Собирает контекст отказа: один выполненный критерий, один проваленный и риск. Так видно, что в письмо попадают только основания самого отказа."""
+    context = make_context(DecisionStatus.reject)
+    assessment = context.assessment_result
+    assert assessment is not None
+
+    return context.with_assessment_result(
+        assessment.model_copy(
+            update={
+                "criterion_evaluations": [
+                    CriterionEvaluation(
+                        criterion="goal_clarity",
+                        criterion_title="Goal clarity",
+                        status=CriterionEvaluationStatus.met,
+                        explanation="Цель описана чётко.",
+                    ),
+                    CriterionEvaluation(
+                        criterion="student_fit",
+                        criterion_title="Student project fit",
+                        status=CriterionEvaluationStatus.not_met,
+                        explanation=(
+                            "Промышленная эксплуатация несовместима с учебным форматом."
+                        ),
+                    ),
+                ],
+                "risks": [
+                    Risk(
+                        type="production_criticality",
+                        description="Заказчик ожидает промышленной надёжности.",
+                        severity=risk_severity,
+                    )
+                ],
+                "has_risks": True,
+            }
+        )
+    )
+
+
 def make_empty_question_result() -> QuestionGenerationResult:
     """Выполняет шаг «make empty question result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return QuestionGenerationResult(
@@ -150,12 +202,12 @@ def make_mvp_planning_result() -> MVPPlanningResult:
     """Выполняет шаг «make mvp planning result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return MVPPlanningResult(
         plan=MVPPlan(
-            core_goal="Build a focused website MVP",
-            keep=["Public landing page"],
-            remove=["Advanced analytics"],
-            simplify=["Use one template"],
-            mvp_scope=["Landing page and contact form"],
-            rationale=["Keep first release small"],
+            core_goal="Сайт образовательного проекта с описанием курсов",
+            keep=["Главная страница с описанием проекта"],
+            remove=["Личный кабинет с аналитикой посещений"],
+            simplify=["Взять готовый шаблон вместо индивидуального дизайна"],
+            mvp_scope=["Главная страница", "Форма обратной связи"],
+            rationale=["Первая версия должна умещаться в один учебный семестр"],
         ),
         technical_info=MVPPlanningTechnicalInfo(
             llm_invoked=True,
@@ -218,7 +270,7 @@ class TestResponseWriterStage(unittest.TestCase):
             "simplify",
         )
         self.assertIn(
-            "Build a focused website MVP",
+            "Сайт образовательного проекта с описанием курсов",
             updated.final_response_payload["mvp_suggestion"],
         )
 
@@ -245,6 +297,100 @@ class TestResponseWriterStage(unittest.TestCase):
                     status.value.lower(),
                 )
                 self.assertEqual(updated.final_response_payload["mvp_suggestion"], "")
+
+
+class TestResponseWriterReasons(unittest.TestCase):
+    """Проверяет блок «Основания оценки»: он должен объяснять вердикт словами оценки брифа, а не техническими строками арбитра."""
+
+    def test_accept_reasons_use_criterion_explanations(self) -> None:
+        updated = ResponseWriterStage().run_context(make_context())
+
+        self.assertIn("Основания оценки:", updated.final_response_text)
+        self.assertIn("Цель описана.", updated.final_response_text)
+
+    def test_reasons_ignore_arbitration_reasons(self) -> None:
+        # В фикстуре арбитр отдает англоязычное описание правила из criteria.yaml.
+        context = make_context().with_arbitration_result(
+            ArbitrationResult(
+                final_status=DecisionStatus.accept,
+                reasons=[
+                    "Accept when the brief is complete, criteria are met "
+                    "and no relevant risks remain.",
+                    "Matched conditions: completeness.is_complete eq True",
+                    "Signals: completeness.is_complete=True",
+                ],
+                confidence=0.9,
+            )
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+
+        self.assertNotIn("Accept when the brief", updated.final_response_text)
+        self.assertNotIn("Matched conditions", updated.final_response_text)
+        self.assertNotIn("Signals", updated.final_response_text)
+
+    def test_reject_reasons_show_problems_instead_of_met_criteria(self) -> None:
+        context = make_reject_context()
+
+        updated = ResponseWriterStage().run_context(context)
+
+        self.assertNotIn("Цель описана чётко.", updated.final_response_text)
+        self.assertIn(
+            "Промышленная эксплуатация несовместима с учебным форматом.",
+            updated.final_response_text,
+        )
+        self.assertIn(
+            "Заказчик ожидает промышленной надёжности.",
+            updated.final_response_text,
+        )
+
+    def test_reasons_block_is_omitted_when_nothing_explains_verdict(self) -> None:
+        # Единственный критерий выполнен, рисков нет - обосновывать отказ нечем.
+        updated = ResponseWriterStage().run_context(
+            make_context(DecisionStatus.reject)
+        )
+
+        self.assertNotIn("Основания оценки:", updated.final_response_text)
+
+    def test_low_severity_risks_are_not_reported_to_customer(self) -> None:
+        context = make_reject_context(risk_severity=RiskSeverity.low)
+
+        updated = ResponseWriterStage().run_context(context)
+
+        self.assertNotIn(
+            "Заказчик ожидает промышленной надёжности.",
+            updated.final_response_text,
+        )
+
+    def test_missing_information_uses_russian_field_titles(self) -> None:
+        updated = ResponseWriterStage().run_context(
+            make_context(DecisionStatus.clarify)
+        )
+
+        self.assertEqual(
+            updated.final_response_payload["extracted_fields"]["missing_information"],
+            ["Доступные материалы"],
+        )
+
+    def test_customer_response_draft_has_no_latin_words(self) -> None:
+        cases = {
+            DecisionStatus.accept: make_context(),
+            DecisionStatus.clarify: make_context(DecisionStatus.clarify),
+            DecisionStatus.mentor_review: make_context(DecisionStatus.mentor_review),
+            DecisionStatus.reject: make_reject_context(),
+            DecisionStatus.simplify: make_context(
+                DecisionStatus.simplify
+            ).with_mvp_planning_result(make_mvp_planning_result()),
+        }
+
+        for status, context in cases.items():
+            with self.subTest(status=status):
+                updated = ResponseWriterStage().run_context(context)
+
+                self.assertEqual(
+                    find_latin_words(updated.final_response_text),
+                    [],
+                )
 
 
 if __name__ == "__main__":
