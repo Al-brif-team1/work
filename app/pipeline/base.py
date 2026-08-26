@@ -122,7 +122,6 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
                 span_name=self.span_name,
                 trace_input=self.build_trace_input(stage_input),
                 payload_validator=self.validate_payload,
-                temperature=self.temperature,
                 request_kwargs=self.build_request_kwargs(stage_input),
             )
         except LLMRunnerError as exc:
@@ -145,11 +144,6 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
     def span_name(self) -> str:
         """Выполняет шаг «span name». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return f"{self.__class__.__name__}.llm"
-
-    @property
-    def temperature(self) -> float:
-        """Выполняет шаг «temperature». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        return 0
 
     def build_prompt(self, stage_input: TInput) -> str:
         """Выполняет шаг «build prompt». Документация описывает назначение метода, а сама логика остается в коде ниже."""
@@ -264,7 +258,6 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
                 messages=messages,
                 response_model=response_model,
                 payload_validator=payload_validator,
-                temperature=0,
             )
         except Exception as exc:
             raise self._build_failure_exception(

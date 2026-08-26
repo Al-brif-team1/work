@@ -104,7 +104,6 @@ class LLMRunner:
         span_name: str,
         trace_input: dict[str, Any] | None = None,
         payload_validator: Callable[[TPayload], None] | None = None,
-        temperature: float = 0,
         request_kwargs: dict[str, Any] | None = None,
     ) -> LLMRunResult[TPayload]:
         """Выполняет шаг «run json». Документация описывает назначение метода, а сама логика остается в коде ниже."""
@@ -150,7 +149,6 @@ class LLMRunner:
                     ) as span:
                         raw_response = self._call_generate_json(
                             messages=normalized_messages,
-                            temperature=temperature,
                             request_kwargs=self._with_json_schema_response_format(
                                 request_kwargs,
                                 response_model,
@@ -243,7 +241,6 @@ class LLMRunner:
         span_name: str = "llm.call",
         trace_input: dict[str, Any] | None = None,
         payload_validator: Callable[[TPayload], None] | None = None,
-        temperature: float = 0,
         request_kwargs: dict[str, Any] | None = None,
     ) -> LLMRunResult[TPayload]:
         """[ЗАПУСК РОБОТА] Главная команда этапа: она заставляет этого робота выполнить свою работу и вернуть результат в формате, который понимает следующий участок конвейера."""
@@ -259,7 +256,6 @@ class LLMRunner:
             span_name=span_name,
             trace_input=trace_input,
             payload_validator=payload_validator,
-            temperature=temperature,
             request_kwargs=request_kwargs,
         )
 
@@ -267,11 +263,11 @@ class LLMRunner:
         self,
         *,
         messages: Sequence[Message],
-        temperature: float,
         request_kwargs: dict[str, Any],
     ) -> dict[str, Any]:
         """Выполняет шаг «call generate json». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        kwargs = {"temperature": temperature, **request_kwargs}
+        # Параметры генерации задает клиент из настроек; здесь только то, что специфично для вызова.
+        kwargs = dict(request_kwargs)
         if self._timeout_seconds is not None and "timeout" not in kwargs:
             kwargs["timeout"] = self._timeout_seconds
 

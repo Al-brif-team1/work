@@ -10,8 +10,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Класс «Settings» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
-    openrouter_api_key: str = Field(..., alias="OPENROUTER_API_KEY")
-    openrouter_model: str = Field(..., alias="OPENROUTER_MODEL")
+    llm_api_key: str = Field(..., alias="LLM_API_KEY")
+    llm_model: str = Field(..., alias="LLM_MODEL")
+    llm_base_url: str = Field(..., alias="LLM_BASE_URL")
+    llm_temperature: float = Field(0.0, alias="LLM_TEMPERATURE")
+    llm_max_tokens: int | None = Field(None, alias="LLM_MAX_TOKENS")
+    llm_top_p: float | None = Field(None, alias="LLM_TOP_P")
+    llm_max_attempts: int = Field(2, alias="LLM_MAX_ATTEMPTS")
+    llm_timeout_seconds: float = Field(60.0, alias="LLM_TIMEOUT_SECONDS")
+    llm_transport_retries: int = Field(0, alias="LLM_TRANSPORT_RETRIES")
     langfuse_public_key: str | None = Field(None, alias="LANGFUSE_PUBLIC_KEY")
     langfuse_secret_key: str | None = Field(None, alias="LANGFUSE_SECRET_KEY")
     langfuse_host: str = Field("https://cloud.langfuse.com", alias="LANGFUSE_HOST")
@@ -35,6 +42,8 @@ class Settings(BaseSettings):
         "knowledge_chunk_size",
         "knowledge_chunk_overlap",
         "knowledge_top_k",
+        "llm_max_attempts",
+        "llm_timeout_seconds",
     )
     @classmethod
     def _validate_positive(cls, value: int) -> int:
@@ -43,6 +52,52 @@ class Settings(BaseSettings):
             raise ValueError("must be greater than zero")
 
         return value
+
+    @field_validator("llm_max_tokens")
+    @classmethod
+    def _validate_optional_positive(cls, value: int | None) -> int | None:
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
+        if value is not None and value <= 0:
+            raise ValueError("must be greater than zero")
+
+        return value
+
+    @field_validator("llm_transport_retries")
+    @classmethod
+    def _validate_non_negative(cls, value: int) -> int:
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
+        if value < 0:
+            raise ValueError("must not be negative")
+
+        return value
+
+    @field_validator("llm_temperature")
+    @classmethod
+    def _validate_temperature(cls, value: float) -> float:
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
+        if not 0.0 <= value <= 2.0:
+            raise ValueError("must be between 0 and 2")
+
+        return value
+
+    @field_validator("llm_top_p")
+    @classmethod
+    def _validate_top_p(cls, value: float | None) -> float | None:
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
+        if value is not None and not 0.0 < value <= 1.0:
+            raise ValueError("must be greater than 0 and not greater than 1")
+
+        return value
+
+    @field_validator("llm_base_url")
+    @classmethod
+    def _validate_base_url(cls, value: str) -> str:
+        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
+        normalized = value.strip()
+        if not normalized.startswith(("http://", "https://")):
+            raise ValueError("must start with http:// or https://")
+
+        return normalized.rstrip("/")
 
     @model_validator(mode="after")
     def _validate_chunk_relationship(self) -> "Settings":

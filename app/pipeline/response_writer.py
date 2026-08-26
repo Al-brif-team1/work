@@ -5,8 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from app.pipeline.contracts import BaseStage
-from app.pipeline.result_builder import BriefAnalysisResultBuilder
-from app.schemas import AIContext, DecisionStatus
+from app.pipeline.result_builder import BriefAnalysisResultBuilder, deduplicate
+from app.schemas import (
+    AIContext,
+    CriterionEvaluationStatus,
+    DecisionStatus,
+    RiskSeverity,
+)
 from app.tracing.tracing import NoOpTracingClient, TracingClient
 
 
@@ -16,6 +21,18 @@ class ResponseWriterError(RuntimeError):
 
 class ResponseWriterStage(BaseStage[AIContext, AIContext]):
     """[РОЛЬ В КОНВЕЙЕРЕ] Этот класс - чертеж конкретного робота-сотрудника: Секретарь-Писатель. Он детерминированным кодом собирает готовый ответ из деталей конструктора. Этот этап работает как детерминированный робот: обычный код, без творческих догадок ИИ. [НАСЛЕДОВАНИЕ] Этот робот строится на базе общего шаблона BaseStage, поэтому он умеет работать в нашем конвейере."""
+
+    # Согласие обосновывают выполненные критерии, отказ и эскалацию - проваленные.
+    # Из рисков показываем только высокие и критические: остальные не влияют на решение.
+    _ACCEPTED_CRITERION_STATUSES = frozenset({CriterionEvaluationStatus.met})
+    _PROBLEM_CRITERION_STATUSES = frozenset(
+        {
+            CriterionEvaluationStatus.not_met,
+            CriterionEvaluationStatus.insufficient_information,
+            CriterionEvaluationStatus.risk_detected,
+        }
+    )
+    _REPORTED_RISK_SEVERITIES = frozenset({RiskSeverity.high, RiskSeverity.critical})
 
     def __init__(
         self,
@@ -168,15 +185,38 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         return "описание требует дополнительного уточнения"
 
     def _format_reasons(self, context: AIContext) -> str:
-        """Выполняет шаг «format reasons». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        reasons = (
-            context.arbitration_result.reasons
-            if context.arbitration_result is not None
-            else []
-        )
+        """Собирает блок «Основания оценки» из объяснений критериев. Причины арбитра сюда не идут: это технические строки конфигурации, а заказчику нужна оценка его брифа."""
+        reasons = deduplicate(self._reason_items(context))
         if not reasons:
             return ""
         return "Основания оценки:\n" + "\n".join(f"- {item}" for item in reasons) + "\n\n"
+
+    def _reason_items(self, context: AIContext) -> list[str]:
+        """Отбирает объяснения под конкретный вердикт. Без отбора отказное письмо начиналось бы с похвал брифу, а настоящая причина отказа терялась бы в конце списка."""
+        assessment = context.assessment_result
+        if assessment is None:
+            return []
+
+        accepted = (
+            context.arbitration_result is not None
+            and context.arbitration_result.final_status is DecisionStatus.accept
+        )
+        reported_statuses = (
+            self._ACCEPTED_CRITERION_STATUSES
+            if accepted
+            else self._PROBLEM_CRITERION_STATUSES
+        )
+        items = [
+            item.explanation
+            for item in assessment.criterion_evaluations
+            if item.explanation and item.status in reported_statuses
+        ]
+        items.extend(
+            risk.description
+            for risk in assessment.risks
+            if risk.severity in self._REPORTED_RISK_SEVERITIES
+        )
+        return items
 
     def _format_questions(self, context: AIContext, *, optional: bool = False) -> str:
         """Выполняет шаг «format questions». Документация описывает назначение метода, а сама логика остается в коде ниже."""

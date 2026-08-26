@@ -344,6 +344,36 @@ class TestDeterministicArbiterStage(unittest.TestCase):
         self.assertEqual(result.final_status, DecisionStatus.reject)
         self.assertEqual(result.triggered_rules[0].rule_key, "reject_critical_risk")
 
+    def test_reasons_hold_only_rule_description(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.critical],
+                statuses=[CriterionEvaluationStatus.met],
+            ),
+        )
+
+        self.assertEqual(
+            result.reasons,
+            ["Reject when a critical risk is present."],
+        )
+
+    def test_rule_hit_keeps_conditions_and_signals(self) -> None:
+        # Отладочные строки убраны из reasons, но сами данные должны остаться:
+        # без них нельзя разобрать, почему арбитр выбрал именно это правило.
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.critical],
+                statuses=[CriterionEvaluationStatus.met],
+            ),
+        )
+
+        hit = result.triggered_rules[0]
+        self.assertEqual(hit.conditions, ["risk.max_severity in ['critical']"])
+        self.assertEqual(hit.metadata["signals"], {"risk.max_severity": "critical"})
+        self.assertEqual(result.metadata["signals"]["risk.max_severity"], "critical")
+
     def test_clarify_status_for_missing_information(self) -> None:
         result = self.arbiter.arbitrate_assessment(
             make_completeness_result(complete=False, missing=1),

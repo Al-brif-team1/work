@@ -69,7 +69,7 @@ def run(argv: Sequence[str] | None = None) -> int:
         llm_client = LLMClientFactory.create(settings)
         pipeline = BriefAnalysisPipeline.from_llm_client(
             llm_client,
-            model_name=settings.openrouter_model,
+            settings=settings,
         )
         result = pipeline.analyze(brief_input)
     except (RuntimeError, BriefAnalysisPipelineError) as exc:

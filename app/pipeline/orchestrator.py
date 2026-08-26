@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from app.config import CriteriaConfig, get_criteria_config
+from app.config import CriteriaConfig, Settings, get_criteria_config
 from app.input import BriefInputFactory
 from app.llm.client import LLMClient
 from app.llm.runner import LLMRunner
@@ -60,8 +60,16 @@ class BriefAnalysisPipeline:
         timeout_seconds: float | None = 60.0,
         model_name: str | None = None,
         input_factory: BriefInputFactory | None = None,
+        settings: Settings | None = None,
     ) -> "BriefAnalysisPipeline":
         """Выполняет шаг «from llm client». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        # Когда настройки переданы, надежность конвейера задают именно они:
+        # так значения из .env не приходится дублировать аргументами вызова.
+        if settings is not None:
+            max_retries = settings.llm_max_attempts
+            timeout_seconds = settings.llm_timeout_seconds
+            model_name = model_name or settings.llm_model
+
         tracing = tracing_client or get_tracing_client()
         config = criteria_config or get_criteria_config()
         prompts = prompt_manager or PromptManager()

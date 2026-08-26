@@ -410,22 +410,23 @@ class TestExtractor(unittest.TestCase):
 
 
 @unittest.skipUnless(
-    os.getenv("OPENROUTER_API_KEY") and os.getenv("OPENROUTER_MODEL"),
-    "OPENROUTER_API_KEY and OPENROUTER_MODEL are required for the integration test",
+    os.getenv("LLM_API_KEY") and os.getenv("LLM_MODEL") and os.getenv("LLM_BASE_URL"),
+    "LLM_API_KEY, LLM_MODEL and LLM_BASE_URL are required for the integration test",
 )
 class TestExtractorIntegration(unittest.TestCase):
     """Класс «TestExtractorIntegration» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
     def test_real_llm_extraction_produces_structured_output(self) -> None:
         settings = Settings(
-            OPENROUTER_API_KEY=os.environ["OPENROUTER_API_KEY"],
-            OPENROUTER_MODEL=os.environ["OPENROUTER_MODEL"],
+            LLM_API_KEY=os.environ["LLM_API_KEY"],
+            LLM_MODEL=os.environ["LLM_MODEL"],
+            LLM_BASE_URL=os.environ["LLM_BASE_URL"],
         )
         llm_client = LLMClientFactory.create(settings)
         extractor = Extractor(
             llm_client=llm_client,
             tracing_client=NoOpTracingClient(),
-            model_name=settings.openrouter_model,
+            model_name=settings.llm_model,
         )
 
         result = extractor.extract(
@@ -438,7 +439,7 @@ class TestExtractorIntegration(unittest.TestCase):
 
         self.assertIsNotNone(result.extracted_brief.project_goal.status)
         self.assertGreaterEqual(result.technical_info.attempts, 1)
-        self.assertEqual(result.technical_info.model_name, settings.openrouter_model)
+        self.assertEqual(result.technical_info.model_name, settings.llm_model)
 
 
 if __name__ == "__main__":

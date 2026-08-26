@@ -6,6 +6,8 @@ from collections.abc import Iterable
 from typing import Any
 import unittest
 
+from tests.test_response_writer import find_latin_words
+
 from app.pipeline import (
     AssessmentStage,
     BriefAnalysisPipeline,
@@ -148,41 +150,41 @@ def _minimal_extraction_payload() -> dict[str, Any]:
     return {
         "project_goal": {
             "status": "explicit",
-            "value": "Create a small support portal for customer requests.",
-            "evidence": ["Need a support portal for requests."],
+            "value": "Сделать небольшой портал для приёма обращений клиентов.",
+            "evidence": ["Нужен портал для приёма обращений."],
             "confidence": 0.95,
         },
         "tasks": [
             {
                 "status": "explicit",
-                "value": "Collect support requests through a web form.",
-                "evidence": ["The portal should collect requests."],
+                "value": "Принимать обращения через веб-форму.",
+                "evidence": ["Портал должен собирать обращения."],
                 "confidence": 0.95,
             }
         ],
         "project_type": {
             "status": "explicit",
             "value": "web_app",
-            "evidence": ["support portal"],
+            "evidence": ["портал поддержки"],
             "confidence": 0.9,
         },
         "project_direction": {
             "status": "explicit",
             "value": "development",
-            "evidence": ["Create a small support portal."],
+            "evidence": ["Сделать небольшой портал поддержки."],
             "confidence": 0.9,
         },
         "expected_result": {
             "status": "explicit",
-            "value": "A working MVP with a request form and confirmation screen.",
-            "evidence": ["working MVP"],
+            "value": "Работающая первая версия с формой обращения и экраном подтверждения.",
+            "evidence": ["работающая первая версия"],
             "confidence": 0.95,
         },
         "materials": [
             {
                 "status": "explicit",
-                "value": "Use the existing product copy.",
-                "evidence": ["existing product copy"],
+                "value": "Использовать существующие тексты о продукте.",
+                "evidence": ["существующие тексты о продукте"],
                 "confidence": 0.8,
             }
         ],
@@ -202,31 +204,31 @@ def _ready_assessment_payload() -> dict[str, Any]:
             CriterionEvaluation(
                 criterion="goal_clarity",
                 status=CriterionEvaluationStatus.met,
-                explanation="The goal is explicit.",
+                explanation="Цель сформулирована явно.",
             ),
             CriterionEvaluation(
                 criterion="expected_result",
                 status=CriterionEvaluationStatus.met,
-                explanation="The expected MVP result is explicit.",
+                explanation="Ожидаемый результат первой версии описан конкретно.",
             ),
             CriterionEvaluation(
                 criterion="scope_definition",
                 status=CriterionEvaluationStatus.met,
-                explanation="The initial scope is narrow enough.",
+                explanation="Объём первой версии достаточно узкий.",
             ),
         ],
         risks=[],
         evidence=[
             {
                 "source": "brief",
-                "quote": "Need a small web support portal for customer requests.",
+                "quote": "Нужен небольшой веб-портал для приёма обращений клиентов.",
                 "related_criteria": ["goal_clarity", "expected_result", "scope_definition"],
                 "confidence": 0.9,
             }
         ],
         has_risks=False,
         recommendation=AssessmentRecommendation.ready_for_arbitration,
-        summary="The brief is ready for implementation planning.",
+        summary="Портал для приёма обращений клиентов.",
         confidence=0.9,
     ).model_dump(mode="json")
 
@@ -272,8 +274,8 @@ class TestBriefAnalysisPipeline(unittest.TestCase):
         pipeline = _build_factory_pipeline(fake_client)
 
         result = pipeline.analyze_text(
-            "Need a small web support portal for customer requests. "
-            "It should include a request form and confirmation screen."
+            "Нужен небольшой веб-портал для приёма обращений клиентов. "
+            "В нём должны быть форма обращения и экран подтверждения."
         )
 
         self.assertIsInstance(result, BriefAnalysisResult)
@@ -282,6 +284,25 @@ class TestBriefAnalysisPipeline(unittest.TestCase):
         self.assertEqual(result.clarifying_questions, [])
         self.assertEqual(result.mvp_suggestion, "")
         self.assertEqual(len(fake_client.calls), 2)
+
+    def test_production_factory_draft_has_no_internal_english(self) -> None:
+        # Боевой criteria.yaml англоязычный: этот тест ловит любую его строку,
+        # просочившуюся в письмо заказчику или в основания публичного результата.
+        fake_client = FakeProductionLLMClient(
+            [
+                _minimal_extraction_payload(),
+                _ready_assessment_payload(),
+            ]
+        )
+        pipeline = _build_factory_pipeline(fake_client)
+
+        result = pipeline.analyze_text(
+            "Нужен небольшой веб-портал для приёма обращений клиентов. "
+            "В нём должны быть форма обращения и экран подтверждения."
+        )
+
+        self.assertEqual(find_latin_words(result.customer_response_draft), [])
+        self.assertEqual(find_latin_words(" ".join(result.assessment.reasons)), [])
 
     def test_analyze_text_returns_public_result(self) -> None:
         pipeline = BriefAnalysisPipeline(
