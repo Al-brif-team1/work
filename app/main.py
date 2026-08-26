@@ -81,7 +81,8 @@ def run(argv: Sequence[str] | None = None) -> int:
             result.model_dump(mode="json"),
             ensure_ascii=False,
             indent=2,
-        )
+        ),
+        flush=True,
     )
     return 0
 

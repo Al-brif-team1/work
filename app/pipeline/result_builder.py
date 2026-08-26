@@ -79,7 +79,6 @@ class BriefAnalysisResultBuilder:
                 ),
                 reasons=self._deduplicate(
                     [
-                        *arbitration.reasons,
                         *[
                             item.explanation
                             for item in assessment.criterion_evaluations
@@ -131,12 +130,12 @@ class BriefAnalysisResultBuilder:
             )
 
     @staticmethod
-    def _fact_value(fact: ExtractedFact) -> str | None:
+    def _fact_value(fact: ExtractedFact) -> str:
         """Выполняет шаг «fact value». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         if fact.value is None:
-            return None
+            return ""
         value = fact.value.strip()
-        return value or None
+        return value
 
     @classmethod
     def _fact_values(cls, facts: list[ExtractedFact]) -> list[str]:
@@ -146,10 +145,8 @@ class BriefAnalysisResultBuilder:
         )
 
     @staticmethod
-    def _normalize_direction(value: str | None) -> str | None:
+    def _normalize_direction(value: str) -> str:
         """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
-        if value is None:
-            return None
         normalized = " ".join(value.lower().split())
         aliases = {
             "разработка": "development",

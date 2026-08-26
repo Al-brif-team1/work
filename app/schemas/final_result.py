@@ -19,11 +19,11 @@ ConfidenceValue = Literal["low", "medium", "high"]
 class BriefExtractedFields(BaseModel):
     """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
-    goal: str | None = None
-    expected_result: str | None = None
+    goal: str = ""
+    expected_result: str = ""
     tasks: list[str] = Field(default_factory=list)
-    domain: str | None = None
-    direction: str | None = None
+    domain: str = ""
+    direction: str = ""
     available_materials: list[str] = Field(default_factory=list)
     missing_information: list[str] = Field(default_factory=list)
     complexity_factors: list[str] = Field(default_factory=list)

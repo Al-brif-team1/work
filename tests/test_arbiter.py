@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from textwrap import dedent
 
@@ -312,6 +314,23 @@ class TestDeterministicArbiterStage(unittest.TestCase):
 
         self.assertEqual(result.final_status, DecisionStatus.accept)
         self.assertTrue(result.evidence)
+
+    def test_arbitration_diagnostics_are_written_to_stderr(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            result = self.arbiter.arbitrate_assessment(
+                make_completeness_result(complete=True),
+                make_assessment_result(
+                    severities=[],
+                    statuses=[CriterionEvaluationStatus.met],
+                ),
+            )
+
+        self.assertEqual(result.final_status, DecisionStatus.accept)
+        self.assertNotIn("[ARBITRATION DIAGNOSTICS]", stdout.getvalue())
+        self.assertIn("[ARBITRATION DIAGNOSTICS]", stderr.getvalue())
 
     def test_reject_status_for_critical_risk(self) -> None:
         result = self.arbiter.arbitrate_assessment(

@@ -1,11 +1,15 @@
+import json
 import io
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.input import BriefInputError, BriefInputFactory, BriefInputNormalizer
 from app.main import run
+from app.schemas import BriefAnalysisResult
 
 
 class TestBriefInputNormalizer(unittest.TestCase):
@@ -80,6 +84,65 @@ class TestBriefCli(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn('"normalized_text": "Project brief"', output.getvalue())
+
+    def test_run_writes_final_json_to_stdout_and_diagnostics_to_stderr(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        result = BriefAnalysisResult.model_validate(
+            {
+                "summary": "Project summary",
+                "extracted_fields": {
+                    "goal": "Build a project",
+                    "expected_result": "Working result",
+                    "tasks": [],
+                    "domain": "",
+                    "direction": "",
+                    "available_materials": [],
+                    "missing_information": [],
+                    "complexity_factors": [],
+                },
+                "assessment": {
+                    "recommendation": "accept",
+                    "confidence": "high",
+                    "reasons": ["Criterion explanation"],
+                    "risks": [],
+                },
+                "clarifying_questions": [],
+                "mvp_suggestion": "",
+                "customer_response_draft": "Customer response",
+            }
+        )
+
+        class PipelineStub:
+            def analyze(self, brief_input):
+                print(
+                    "[ARBITRATION DIAGNOSTICS] result: matched_rule=accept_ready",
+                    file=stderr,
+                )
+                return result
+
+        with (
+            patch(
+                "app.main.Config.load",
+                return_value=SimpleNamespace(openrouter_model="test-model"),
+            ),
+            patch("app.main.LLMClientFactory.create", return_value=object()),
+            patch(
+                "app.main.BriefAnalysisPipeline.from_llm_client",
+                return_value=PipelineStub(),
+            ),
+            redirect_stdout(stdout),
+            redirect_stderr(stderr),
+        ):
+            exit_code = run(["--text", "Project brief"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("[ARBITRATION DIAGNOSTICS]", stdout.getvalue())
+        self.assertIn("[ARBITRATION DIAGNOSTICS]", stderr.getvalue())
+
+        parsed = json.loads(stdout.getvalue())
+        self.assertEqual(parsed["summary"], "Project summary")
+        self.assertNotIn("[ARBITRATION DIAGNOSTICS]", json.dumps(parsed))
 
 
 if __name__ == "__main__":

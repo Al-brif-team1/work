@@ -181,6 +181,60 @@ class TestResponseWriterStage(unittest.TestCase):
             "development",
         )
 
+    def test_missing_public_string_fields_are_empty_strings(self) -> None:
+        context = make_context()
+        assert context.extracted_brief is not None
+        extracted = context.extracted_brief.model_copy(
+            update={
+                "project_goal": ExtractedFact(status=FactStatus.missing, value=None),
+                "expected_result": ExtractedFact(status=FactStatus.missing, value=None),
+                "project_type": ExtractedFact(status=FactStatus.missing, value=None),
+                "project_direction": ExtractedFact(status=FactStatus.missing, value=None),
+            }
+        )
+
+        updated = ResponseWriterStage().run_context(context.with_extracted_brief(extracted))
+
+        self.assertEqual(updated.final_response_payload["extracted_fields"]["goal"], "")
+        self.assertEqual(
+            updated.final_response_payload["extracted_fields"]["expected_result"],
+            "",
+        )
+        self.assertEqual(updated.final_response_payload["extracted_fields"]["domain"], "")
+        self.assertEqual(
+            updated.final_response_payload["extracted_fields"]["direction"],
+            "",
+        )
+
+    def test_public_reasons_exclude_arbitration_diagnostics(self) -> None:
+        context = make_context().with_arbitration_result(
+            ArbitrationResult(
+                final_status=DecisionStatus.accept,
+                reasons=[
+                    "Matched conditions: risk.max_severity in ['high']",
+                    "Signals: risk.max_severity='high'",
+                    "No arbitration rule matched; default status selected from configuration.",
+                ],
+                evidence=[],
+                triggered_rules=[],
+                confidence=0.9,
+                metadata={},
+            )
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+
+        self.assertEqual(
+            updated.final_response_payload["assessment"]["reasons"],
+            ["Цель описана."],
+        )
+        serialized_reasons = "\n".join(
+            updated.final_response_payload["assessment"]["reasons"]
+        )
+        self.assertNotIn("Matched conditions:", serialized_reasons)
+        self.assertNotIn("Signals:", serialized_reasons)
+        self.assertNotIn("No arbitration rule matched", serialized_reasons)
+
     def test_clarify_response_includes_questions(self) -> None:
         updated = ResponseWriterStage().run_context(
             make_context(DecisionStatus.clarify)

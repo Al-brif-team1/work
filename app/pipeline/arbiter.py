@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -329,16 +330,23 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         matched_rule_key: str | None,
         default_status: str | None = None,
     ) -> None:
-        """Print temporary arbitration diagnostics to stdout."""
+        """Print temporary arbitration diagnostics to stderr."""
+        stream = sys.stderr
         if matched_rule_key is not None:
             print(
                 "[ARBITRATION DIAGNOSTICS] result: "
-                f"matched_rule={matched_rule_key}"
+                f"matched_rule={matched_rule_key}",
+                file=stream,
+                flush=True,
             )
             return
 
         if default_status is not None:
-            print("[ARBITRATION DIAGNOSTICS] result: no rule matched")
+            print(
+                "[ARBITRATION DIAGNOSTICS] result: no rule matched",
+                file=stream,
+                flush=True,
+            )
             for rule in diagnostics["rules"]:
                 failed_conditions = rule["rejected_because"]
                 if not failed_conditions:
@@ -355,29 +363,45 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
                 print(
                     "  "
                     f"rule={rule['key']} rejected: "
-                    f"{'; '.join(reasons)}"
+                    f"{'; '.join(reasons)}",
+                    file=stream,
+                    flush=True,
                 )
             print(
                 "[ARBITRATION DIAGNOSTICS] default_status used: "
-                f"{default_status} because no arbitration rule matched"
+                f"{default_status} because no arbitration rule matched",
+                file=stream,
+                flush=True,
             )
             return
 
-        print("[ARBITRATION DIAGNOSTICS] actual values used by arbiter:")
+        print(
+            "[ARBITRATION DIAGNOSTICS] actual values used by arbiter:",
+            file=stream,
+            flush=True,
+        )
         for field, value in diagnostics["actuals"].items():
             print(
                 "  "
-                f"{field}: actual={self._format_diagnostic_value(value)}"
+                f"{field}: actual={self._format_diagnostic_value(value)}",
+                file=stream,
+                flush=True,
             )
 
-        print("[ARBITRATION DIAGNOSTICS] rules:")
+        print("[ARBITRATION DIAGNOSTICS] rules:", file=stream, flush=True)
         for rule in diagnostics["rules"]:
             print(
                 "  "
-                f"rule={rule['key']} target_status={rule['target_status']}"
+                f"rule={rule['key']} target_status={rule['target_status']}",
+                file=stream,
+                flush=True,
             )
             if rule["key"] == "accept_ready":
-                print("    accept_ready detailed conditions:")
+                print(
+                    "    accept_ready detailed conditions:",
+                    file=stream,
+                    flush=True,
+                )
             for condition in rule["conditions"]:
                 result = "PASS" if condition["passed"] else "FAIL"
                 print(
@@ -385,7 +409,9 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
                     f"{condition['field']}: "
                     f"actual={self._format_diagnostic_value(condition['actual'])}, "
                     f"expected={self._format_diagnostic_value(condition['expected'])}, "
-                    f"operator={condition['operator']} -> {result}"
+                    f"operator={condition['operator']} -> {result}",
+                    file=stream,
+                    flush=True,
                 )
 
     def _condition_matches(
