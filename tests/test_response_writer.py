@@ -5,8 +5,15 @@ from __future__ import annotations
 import re
 import unittest
 
+from pydantic import ValidationError
+
+from app.config import CriteriaLoader
 from app.input import BriefInputFactory
-from app.pipeline import BriefAnalysisResultError, ResponseWriterStage
+from app.pipeline import (
+    BriefAnalysisResultBuilder,
+    BriefAnalysisResultError,
+    ResponseWriterStage,
+)
 from app.schemas import (
     AIContext,
     ArbitrationResult,
@@ -20,6 +27,7 @@ from app.schemas import (
     CriterionEvaluation,
     CriterionEvaluationStatus,
     DecisionStatus,
+    BriefAnalysisResult,
     ExtractedBrief,
     ExtractedFact,
     FactStatus,
@@ -31,6 +39,27 @@ from app.schemas import (
     Risk,
     RiskSeverity,
 )
+
+
+TOP_LEVEL_KEYS = {
+    "summary",
+    "extracted_fields",
+    "assessment",
+    "clarifying_questions",
+    "mvp_suggestion",
+    "customer_response_draft",
+}
+EXTRACTED_FIELD_KEYS = {
+    "goal",
+    "expected_result",
+    "tasks",
+    "domain",
+    "direction",
+    "available_materials",
+    "missing_information",
+    "complexity_factors",
+}
+ASSESSMENT_KEYS = {"recommendation", "confidence", "reasons", "risks"}
 
 
 def make_context(status: DecisionStatus = DecisionStatus.accept) -> AIContext:
@@ -145,6 +174,101 @@ def find_latin_words(text: str) -> list[str]:
     return re.findall(r"[A-Za-z]{2,}", cleaned)
 
 
+def context_with_direction_inputs(
+    *,
+    project_direction: str,
+    project_type: str = "education",
+    project_goal: str = "Сделать сайт для образовательного проекта",
+    tasks: list[str] | None = None,
+    expected_result: str = "сайт",
+    with_config: bool = False,
+) -> AIContext:
+    """Собирает контекст с разными входами для публичной классификации direction."""
+    context = make_context()
+    assert context.extracted_brief is not None
+    extracted = context.extracted_brief.model_copy(
+        update={
+            "project_goal": ExtractedFact(
+                status=FactStatus.explicit,
+                value=project_goal,
+            ),
+            "tasks": [
+                ExtractedFact(status=FactStatus.explicit, value=task)
+                for task in (tasks or [])
+            ],
+            "project_type": ExtractedFact(
+                status=FactStatus.explicit,
+                value=project_type,
+            ),
+            "project_direction": ExtractedFact(
+                status=FactStatus.explicit,
+                value=project_direction,
+            ),
+            "expected_result": ExtractedFact(
+                status=FactStatus.explicit,
+                value=expected_result,
+            ),
+        }
+    )
+    updated = context.with_extracted_brief(extracted)
+    if not with_config:
+        return updated
+
+    return updated.model_copy(
+        update={
+            "technical": updated.technical.model_copy(
+                update={"configuration": CriteriaLoader.load()}
+            )
+        }
+    )
+
+
+def public_direction(context: AIContext) -> str:
+    """Возвращает direction из public JSON payload."""
+    updated = ResponseWriterStage().run_context(context)
+    return updated.final_response_payload["extracted_fields"]["direction"]
+
+
+def make_public_payload() -> dict:
+    """Возвращает минимальный валидный public JSON payload для contract-тестов."""
+    return {
+        "summary": "Project summary",
+        "extracted_fields": {
+            "goal": "Build a project",
+            "expected_result": "Working result",
+            "tasks": ["Task"],
+            "domain": "education",
+            "direction": "development",
+            "available_materials": ["Content"],
+            "missing_information": [],
+            "complexity_factors": [],
+        },
+        "assessment": {
+            "recommendation": "accept",
+            "confidence": "high",
+            "reasons": ["Criterion explanation"],
+            "risks": [],
+        },
+        "clarifying_questions": [],
+        "mvp_suggestion": "",
+        "customer_response_draft": "Customer response",
+    }
+
+
+def assert_no_none(value) -> None:
+    """Проверяет public JSON рекурсивно: None/null в нём быть не должно."""
+    if isinstance(value, dict):
+        for nested in value.values():
+            assert_no_none(nested)
+        return
+    if isinstance(value, list):
+        for nested in value:
+            assert_no_none(nested)
+        return
+    if value is None:
+        raise AssertionError("public JSON must not contain None")
+
+
 def make_reject_context(
     risk_severity: RiskSeverity = RiskSeverity.critical,
 ) -> AIContext:
@@ -219,6 +343,142 @@ def make_mvp_planning_result() -> MVPPlanningResult:
     )
 
 
+class TestPublicJsonContract(unittest.TestCase):
+    """Проверяет неизменный публичный JSON-контракт финального результата."""
+
+    def test_public_payload_has_exact_key_sets(self) -> None:
+        payload = BriefAnalysisResult.model_validate(
+            make_public_payload()
+        ).model_dump(mode="json")
+
+        self.assertEqual(set(payload.keys()), TOP_LEVEL_KEYS)
+        self.assertEqual(set(payload["extracted_fields"].keys()), EXTRACTED_FIELD_KEYS)
+        self.assertEqual(set(payload["assessment"].keys()), ASSESSMENT_KEYS)
+
+    def test_serialized_public_payload_contains_no_none_values(self) -> None:
+        payload = BriefAnalysisResult.model_validate(
+            make_public_payload()
+        ).model_dump(mode="json")
+
+        assert_no_none(payload)
+
+    def test_public_schema_rejects_none_values(self) -> None:
+        cases = []
+        payload = make_public_payload()
+        payload["summary"] = None
+        cases.append(payload)
+
+        payload = make_public_payload()
+        payload["customer_response_draft"] = None
+        cases.append(payload)
+
+        payload = make_public_payload()
+        payload["extracted_fields"]["goal"] = None
+        cases.append(payload)
+
+        payload = make_public_payload()
+        payload["extracted_fields"]["tasks"] = None
+        cases.append(payload)
+
+        payload = make_public_payload()
+        payload["assessment"]["reasons"] = None
+        cases.append(payload)
+
+        for payload in cases:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValidationError):
+                    BriefAnalysisResult.model_validate(payload)
+
+    def test_empty_public_strings_and_lists_are_preserved(self) -> None:
+        payload_data = make_public_payload()
+        payload_data["summary"] = ""
+        payload_data["customer_response_draft"] = ""
+        payload_data["extracted_fields"].update(
+            {
+                "goal": "",
+                "expected_result": "",
+                "tasks": [],
+                "domain": "",
+                "available_materials": [],
+                "missing_information": [],
+                "complexity_factors": [],
+            }
+        )
+        payload_data["assessment"].update(
+            {
+                "reasons": [],
+                "risks": [],
+            }
+        )
+        payload_data["clarifying_questions"] = []
+        payload_data["mvp_suggestion"] = ""
+
+        payload = BriefAnalysisResult.model_validate(payload_data).model_dump(
+            mode="json"
+        )
+
+        self.assertEqual(payload["summary"], "")
+        self.assertEqual(payload["customer_response_draft"], "")
+        self.assertEqual(payload["extracted_fields"]["goal"], "")
+        self.assertEqual(payload["extracted_fields"]["expected_result"], "")
+        self.assertEqual(payload["extracted_fields"]["domain"], "")
+        self.assertEqual(payload["extracted_fields"]["tasks"], [])
+        self.assertEqual(payload["extracted_fields"]["available_materials"], [])
+        self.assertEqual(payload["extracted_fields"]["missing_information"], [])
+        self.assertEqual(payload["extracted_fields"]["complexity_factors"], [])
+        self.assertEqual(payload["assessment"]["reasons"], [])
+        self.assertEqual(payload["assessment"]["risks"], [])
+        self.assertEqual(payload["clarifying_questions"], [])
+        self.assertEqual(payload["mvp_suggestion"], "")
+
+    def test_builder_uses_empty_customer_response_when_text_is_absent(self) -> None:
+        payload = BriefAnalysisResultBuilder().build(make_context()).model_dump(
+            mode="json"
+        )
+
+        self.assertEqual(payload["customer_response_draft"], "")
+
+    def test_public_schemas_reject_extra_fields(self) -> None:
+        cases = []
+        payload = make_public_payload()
+        payload["extra"] = "unexpected"
+        cases.append(payload)
+
+        payload = make_public_payload()
+        payload["extracted_fields"]["extra"] = "unexpected"
+        cases.append(payload)
+
+        payload = make_public_payload()
+        payload["assessment"]["extra"] = "unexpected"
+        cases.append(payload)
+
+        for payload in cases:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValidationError):
+                    BriefAnalysisResult.model_validate(payload)
+
+    def test_public_schema_rejects_invalid_direction(self) -> None:
+        payload = make_public_payload()
+        payload["extracted_fields"]["direction"] = "unknown"
+
+        with self.assertRaises(ValidationError):
+            BriefAnalysisResult.model_validate(payload)
+
+    def test_public_schema_rejects_invalid_recommendation(self) -> None:
+        payload = make_public_payload()
+        payload["assessment"]["recommendation"] = "unknown"
+
+        with self.assertRaises(ValidationError):
+            BriefAnalysisResult.model_validate(payload)
+
+    def test_public_schema_rejects_invalid_confidence(self) -> None:
+        payload = make_public_payload()
+        payload["assessment"]["confidence"] = "certain"
+
+        with self.assertRaises(ValidationError):
+            BriefAnalysisResult.model_validate(payload)
+
+
 class TestResponseWriterStage(unittest.TestCase):
     """Класс «TestResponseWriterStage» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
@@ -233,6 +493,125 @@ class TestResponseWriterStage(unittest.TestCase):
             "development",
         )
 
+    def test_public_direction_accepts_canonical_development(self) -> None:
+        self.assertEqual(public_direction(make_context()), "development")
+
+    def test_public_direction_uses_config_aliases(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="разработка",
+            with_config=True,
+        )
+
+        self.assertEqual(public_direction(context), "development")
+
+    def test_public_direction_classifies_web_service_as_development(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="support automation",
+            project_type="software",
+            project_goal="Build a web service for support automation",
+            tasks=["Create backend API"],
+            expected_result="Working service",
+        )
+
+        self.assertEqual(public_direction(context), "development")
+
+    def test_public_direction_classifies_mobile_app_as_development(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="customer product",
+            project_type="software",
+            project_goal="Build a mobile application for clients",
+            tasks=["Create mobile app screens"],
+            expected_result="Working app",
+        )
+
+        self.assertEqual(public_direction(context), "development")
+
+    def test_public_direction_classifies_ux_ui_redesign_as_design(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="customer experience",
+            project_type="product",
+            project_goal="UX UI redesign of checkout interface",
+            tasks=["Prepare mockup"],
+            expected_result="Updated interface",
+        )
+
+        self.assertEqual(public_direction(context), "design")
+
+    def test_public_direction_classifies_data_research_as_analytics(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="business study",
+            project_type="business",
+            project_goal="Run data research and analytics",
+            tasks=["Build dashboard with metrics"],
+            expected_result="Research conclusions",
+        )
+
+        self.assertEqual(public_direction(context), "analytics")
+
+    def test_public_direction_classifies_smm_promotion_as_marketing(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="communications",
+            project_type="brand",
+            project_goal="Prepare SMM promotion campaign",
+            tasks=["Plan advertising"],
+            expected_result="Marketing plan",
+        )
+
+        self.assertEqual(public_direction(context), "marketing")
+
+    def test_public_direction_classifies_llm_ml_project_as_ai(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="assistant",
+            project_type="software",
+            project_goal="Build an LLM bot with ML classification",
+            tasks=["Create API integration"],
+            expected_result="AI assistant prototype",
+        )
+
+        self.assertEqual(public_direction(context), "ai")
+
+    def test_public_direction_classifies_course_methodology_as_education(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="learning product",
+            project_type="education",
+            project_goal="Create course methodology",
+            tasks=["Prepare learning materials"],
+            expected_result="Course program",
+        )
+
+        self.assertEqual(public_direction(context), "education")
+
+    def test_public_direction_accepts_explicit_mixed(self) -> None:
+        context = context_with_direction_inputs(project_direction="mixed")
+
+        self.assertEqual(public_direction(context), "mixed")
+
+    def test_public_direction_prefers_development_for_education_website(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="learning portal",
+            project_type="education",
+            project_goal="Сделать сайт для образовательного проекта",
+            tasks=["Разработать портал"],
+            expected_result="Рабочий сайт",
+        )
+
+        self.assertEqual(public_direction(context), "development")
+
+    def test_public_direction_unknown_value_raises_clear_error(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="internal alignment",
+            project_type="operations",
+            project_goal="Clarify stakeholder expectations",
+            tasks=["Collect context"],
+            expected_result="Shared understanding",
+        )
+
+        with self.assertRaisesRegex(
+            BriefAnalysisResultError,
+            "Unable to classify public project direction",
+        ):
+            public_direction(context)
+
     def test_missing_public_string_fields_are_empty_strings(self) -> None:
         context = make_context()
         assert context.extracted_brief is not None
@@ -241,7 +620,6 @@ class TestResponseWriterStage(unittest.TestCase):
                 "project_goal": ExtractedFact(status=FactStatus.missing, value=None),
                 "expected_result": ExtractedFact(status=FactStatus.missing, value=None),
                 "project_type": ExtractedFact(status=FactStatus.missing, value=None),
-                "project_direction": ExtractedFact(status=FactStatus.missing, value=None),
             }
         )
 
@@ -255,8 +633,27 @@ class TestResponseWriterStage(unittest.TestCase):
         self.assertEqual(updated.final_response_payload["extracted_fields"]["domain"], "")
         self.assertEqual(
             updated.final_response_payload["extracted_fields"]["direction"],
-            "",
+            "development",
         )
+
+    def test_missing_public_direction_without_signals_raises_clear_error(self) -> None:
+        context = make_context()
+        assert context.extracted_brief is not None
+        extracted = context.extracted_brief.model_copy(
+            update={
+                "project_goal": ExtractedFact(status=FactStatus.missing, value=None),
+                "tasks": [],
+                "project_type": ExtractedFact(status=FactStatus.missing, value=None),
+                "project_direction": ExtractedFact(status=FactStatus.missing, value=None),
+                "expected_result": ExtractedFact(status=FactStatus.missing, value=None),
+            }
+        )
+
+        with self.assertRaisesRegex(
+            BriefAnalysisResultError,
+            "Unable to classify public project direction",
+        ):
+            ResponseWriterStage().run_context(context.with_extracted_brief(extracted))
 
     def test_public_reasons_exclude_arbitration_diagnostics(self) -> None:
         context = make_context().with_arbitration_result(

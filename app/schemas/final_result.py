@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 RecommendationValue = Literal[
     "accept",
@@ -14,6 +14,15 @@ RecommendationValue = Literal[
     "reject",
 ]
 ConfidenceValue = Literal["low", "medium", "high"]
+DirectionValue = Literal[
+    "development",
+    "design",
+    "analytics",
+    "marketing",
+    "ai",
+    "education",
+    "mixed",
+]
 
 
 class BriefExtractedFields(BaseModel):
@@ -23,7 +32,7 @@ class BriefExtractedFields(BaseModel):
     expected_result: str = ""
     tasks: list[str] = Field(default_factory=list)
     domain: str = ""
-    direction: str = ""
+    direction: DirectionValue
     available_materials: list[str] = Field(default_factory=list)
     missing_information: list[str] = Field(default_factory=list)
     complexity_factors: list[str] = Field(default_factory=list)
@@ -53,12 +62,3 @@ class BriefAnalysisResult(BaseModel):
     customer_response_draft: str
 
     model_config = ConfigDict(extra="forbid")
-
-    @field_validator("summary", "customer_response_draft")
-    @classmethod
-    def _strip_required_text(cls, value: str) -> str:
-        """Выполняет шаг «strip required text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        value = value.strip()
-        if not value:
-            raise ValueError("must not be empty")
-        return value

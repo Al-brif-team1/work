@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
+from app.config import CriteriaConfig
 from app.schemas import (
     AIContext,
     BriefAnalysisResult,
@@ -15,10 +17,203 @@ from app.schemas import (
     ExtractedFact,
     RiskSeverity,
 )
+from app.schemas.final_result import DirectionValue
 
 
 class BriefAnalysisResultError(RuntimeError):
     """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
+
+
+_DIRECTION_VALUES = frozenset(
+    {
+        "development",
+        "design",
+        "analytics",
+        "marketing",
+        "ai",
+        "education",
+        "mixed",
+    }
+)
+
+_FALLBACK_DIRECTION_SIGNALS = {
+    "development": (
+        "web",
+        "website",
+        "mobile",
+        "backend",
+        "frontend",
+        "api",
+        "app",
+        "application",
+        "service",
+        "bot",
+        "сайт",
+        "веб-сервис",
+        "приложение",
+        "мобильное приложение",
+        "бот",
+        "портал",
+        "автоматизация",
+        "интеграция",
+    ),
+    "design": (
+        "ux",
+        "ui",
+        "redesign",
+        "interface",
+        "mockup",
+        "редизайн",
+        "интерфейс",
+        "макет",
+        "прототип",
+        "дизайн",
+    ),
+    "analytics": (
+        "analytics",
+        "analysis",
+        "research",
+        "bi",
+        "dashboard",
+        "metrics",
+        "аналитика",
+        "анализ данных",
+        "исследование",
+        "дашборд",
+        "метрики",
+    ),
+    "marketing": (
+        "marketing",
+        "smm",
+        "promotion",
+        "advertising",
+        "маркетинг",
+        "реклама",
+        "продвижение",
+    ),
+    "ai": (
+        "ai",
+        "ml",
+        "llm",
+        "nlp",
+        "computer vision",
+        "ии",
+        "машинное обучение",
+        "нейросеть",
+        "нейросети",
+        "компьютерное зрение",
+    ),
+    "education": (
+        "education",
+        "course",
+        "learning materials",
+        "methodology",
+        "образование",
+        "курс",
+        "обучение",
+        "учебные материалы",
+        "методология",
+    ),
+}
+
+
+def classify_direction(
+    *,
+    project_direction: ExtractedFact,
+    project_type: ExtractedFact,
+    project_goal: ExtractedFact,
+    tasks: list[ExtractedFact],
+    expected_result: ExtractedFact,
+    criteria_config: CriteriaConfig | None = None,
+) -> DirectionValue:
+    """Classify the public direction enum without changing raw extracted facts."""
+    alias_map = _build_direction_alias_map(criteria_config)
+    explicit = _classify_exact_direction(project_direction.value, alias_map)
+    if explicit is not None:
+        return explicit
+
+    context_values = [
+        project_type.value,
+        project_goal.value,
+        *[task.value for task in tasks],
+        expected_result.value,
+    ]
+    signal_matches = _find_direction_signals(context_values)
+    if len(signal_matches) == 1:
+        return next(iter(signal_matches))
+    if len(signal_matches) > 1:
+        return "mixed"
+
+    raw = project_direction.value.strip() if project_direction.value else ""
+    raise BriefAnalysisResultError(
+        f"Unable to classify public project direction: {raw or '<empty>'}"
+    )
+
+
+def _build_direction_alias_map(
+    criteria_config: CriteriaConfig | None,
+) -> dict[str, DirectionValue]:
+    aliases: dict[str, DirectionValue] = {
+        value: value for value in _DIRECTION_VALUES
+    }
+    if criteria_config is None:
+        return aliases
+
+    for project_type in criteria_config.evaluation.project_types:
+        if project_type.key not in _DIRECTION_VALUES:
+            continue
+        direction = project_type.key
+        aliases[_normalize_direction_text(project_type.key)] = direction
+        aliases[_normalize_direction_text(project_type.title)] = direction
+        aliases[_normalize_direction_text(project_type.description)] = direction
+        for alias in project_type.aliases:
+            aliases[_normalize_direction_text(alias)] = direction
+    return aliases
+
+
+def _classify_exact_direction(
+    value: str | None,
+    aliases: dict[str, DirectionValue],
+) -> DirectionValue | None:
+    normalized = _normalize_direction_text(value)
+    if not normalized:
+        return None
+    return aliases.get(normalized)
+
+
+def _find_direction_signals(values: list[str | None]) -> set[DirectionValue]:
+    matches: set[DirectionValue] = set()
+    for value in values:
+        normalized = _normalize_direction_text(value)
+        if not normalized:
+            continue
+        for direction, signals in _FALLBACK_DIRECTION_SIGNALS.items():
+            if any(_contains_direction_signal(normalized, signal) for signal in signals):
+                matches.add(direction)
+
+    if "ai" in matches:
+        matches.discard("development")
+    if "development" in matches:
+        matches.discard("education")
+    return matches
+
+
+def _contains_direction_signal(value: str, signal: str) -> bool:
+    normalized_signal = _normalize_direction_text(signal)
+    if not normalized_signal:
+        return False
+    if len(normalized_signal) <= 3 and normalized_signal.isascii():
+        pattern = rf"(?<![a-z0-9]){re.escape(normalized_signal)}(?![a-z0-9])"
+        return re.search(pattern, value) is not None
+    return normalized_signal in value
+
+
+def _normalize_direction_text(value: str | None) -> str:
+    if value is None:
+        return ""
+    value = value.strip().lower()
+    value = re.sub(r"[\"'`.,;:!?()\[\]{}<>/\\|]+", " ", value)
+    return " ".join(value.split())
 
 
 def deduplicate(values: list[str]) -> list[str]:
@@ -69,8 +264,13 @@ class BriefAnalysisResultBuilder:
                 expected_result=self._fact_value(extracted.expected_result),
                 tasks=self._fact_values(extracted.tasks),
                 domain=self._fact_value(extracted.project_type),
-                direction=self._normalize_direction(
-                    self._fact_value(extracted.project_direction)
+                direction=classify_direction(
+                    project_direction=extracted.project_direction,
+                    project_type=extracted.project_type,
+                    project_goal=extracted.project_goal,
+                    tasks=extracted.tasks,
+                    expected_result=extracted.expected_result,
+                    criteria_config=context.configuration,
                 ),
                 available_materials=deduplicate(
                     [
@@ -137,8 +337,6 @@ class BriefAnalysisResultBuilder:
             raise BriefAnalysisResultError("Final result requires assessment_result")
         if context.arbitration_result is None:
             raise BriefAnalysisResultError("Final result requires arbitration_result")
-        if context.final_response_text is None:
-            raise BriefAnalysisResultError("Final result requires final_response_text")
 
         status = context.arbitration_result.final_status
         if status is DecisionStatus.clarify and not (
@@ -203,29 +401,6 @@ class BriefAnalysisResultBuilder:
         return deduplicate(
             [value for fact in facts if (value := cls._fact_value(fact))]
         )
-
-    @staticmethod
-    def _normalize_direction(value: str) -> str:
-        """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
-        normalized = " ".join(value.lower().split())
-        aliases = {
-            "разработка": "development",
-            "development": "development",
-            "дизайн": "design",
-            "design": "design",
-            "аналитика": "analytics",
-            "analytics": "analytics",
-            "маркетинг": "marketing",
-            "marketing": "marketing",
-            "ии": "ai",
-            "ai": "ai",
-            "искусственный интеллект": "ai",
-            "образование": "education",
-            "education": "education",
-            "смешанный проект": "mixed",
-            "mixed": "mixed",
-        }
-        return aliases.get(normalized, normalized)
 
     @staticmethod
     def _confidence_label(value: float | None) -> str:

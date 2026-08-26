@@ -96,7 +96,7 @@ class TestBriefCli(unittest.TestCase):
                     "expected_result": "Working result",
                     "tasks": [],
                     "domain": "",
-                    "direction": "",
+                    "direction": "development",
                     "available_materials": [],
                     "missing_information": [],
                     "complexity_factors": [],
