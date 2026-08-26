@@ -132,6 +132,12 @@ def classify_direction(
     if explicit is not None:
         return explicit
 
+    signal_matches = _find_direction_signals([project_direction.value])
+    if len(signal_matches) == 1:
+        return next(iter(signal_matches))
+    if len(signal_matches) > 1:
+        return "mixed"
+
     context_values = [
         project_type.value,
         project_goal.value,

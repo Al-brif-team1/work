@@ -504,6 +504,39 @@ class TestResponseWriterStage(unittest.TestCase):
 
         self.assertEqual(public_direction(context), "development")
 
+    def test_public_direction_uses_project_direction_keywords_for_development(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="разработка веб-сервиса",
+            project_type="operations",
+            project_goal="Clarify stakeholder expectations",
+            tasks=["Collect context"],
+            expected_result="Shared understanding",
+        )
+
+        self.assertEqual(public_direction(context), "development")
+
+    def test_public_direction_uses_project_direction_keywords_for_design(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="UX редизайн интерфейса",
+            project_type="operations",
+            project_goal="Clarify stakeholder expectations",
+            tasks=["Collect context"],
+            expected_result="Shared understanding",
+        )
+
+        self.assertEqual(public_direction(context), "design")
+
+    def test_public_direction_uses_project_direction_keywords_for_ai(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="LLM ассистент",
+            project_type="operations",
+            project_goal="Clarify stakeholder expectations",
+            tasks=["Collect context"],
+            expected_result="Shared understanding",
+        )
+
+        self.assertEqual(public_direction(context), "ai")
+
     def test_public_direction_classifies_web_service_as_development(self) -> None:
         context = context_with_direction_inputs(
             project_direction="support automation",
