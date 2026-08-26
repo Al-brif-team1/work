@@ -36,6 +36,7 @@ from app.schemas import (
     ExtractedFact,
     FactStatus,
 )
+from app.tracing.tracing import NoOpTracingClient
 
 
 class ExtractionStageStub:
@@ -237,6 +238,7 @@ def _build_factory_pipeline(fake_client: FakeProductionLLMClient) -> BriefAnalys
     return BriefAnalysisPipeline.from_llm_client(
         fake_client,
         model_name="fake-model",
+        tracing_client=NoOpTracingClient(),
     )
 
 
