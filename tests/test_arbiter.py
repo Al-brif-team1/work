@@ -83,6 +83,14 @@ def write_criteria_yaml(path: Path) -> None:
                 version: "1"
                 description: Test risk analysis configuration.
                 risk_types:
+                  - key: out_of_scope_request
+                    title: Request outside the format
+                    description: Request outside the student project format.
+                    severity_hint: critical
+                    signals:
+                      - partnership_offer
+                    evidence_hints:
+                      - cooperation offered
                   - key: placeholder_risk
                     title: Placeholder risk
                     description: Placeholder risk definition.
@@ -102,6 +110,16 @@ def write_criteria_yaml(path: Path) -> None:
                 description: Test deterministic arbitration rules.
                 default_status: MENTOR_REVIEW
                 rules:
+                  - key: reject_out_of_scope
+                    title: Reject out of scope request
+                    description: Reject when the request does not fit the format.
+                    status: REJECT
+                    confidence: 1.0
+                    conditions:
+                      - field: risk.types
+                        operator: any_in
+                        value:
+                          - out_of_scope_request
                   - key: reject_critical_risk
                     title: Reject critical risk
                     description: Reject when a critical risk is present.
@@ -243,11 +261,16 @@ def make_assessment_result(
     *,
     severities: list[RiskSeverity],
     statuses: list[CriterionEvaluationStatus],
+    risk_types: list[str] | None = None,
 ) -> AssessmentResult:
     """Выполняет шаг «make assessment result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     risks = [
         Risk(
-            type=f"risk_{index}",
+            type=(
+                risk_types[index - 1]
+                if risk_types is not None
+                else f"risk_{index}"
+            ),
             description=f"{severity.value} risk",
             severity=severity,
             evidence=[f"{severity.value} evidence {index}"],
@@ -343,6 +366,51 @@ class TestDeterministicArbiterStage(unittest.TestCase):
 
         self.assertEqual(result.final_status, DecisionStatus.reject)
         self.assertEqual(result.triggered_rules[0].rule_key, "reject_critical_risk")
+
+    def test_reject_status_for_out_of_scope_request(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=False, missing=2),
+            make_assessment_result(
+                severities=[RiskSeverity.critical],
+                statuses=[CriterionEvaluationStatus.not_met],
+                risk_types=["out_of_scope_request"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.reject)
+        self.assertEqual(result.triggered_rules[0].rule_key, "reject_out_of_scope")
+        self.assertEqual(
+            result.evidence,
+            ["out_of_scope_request: critical risk"],
+        )
+
+    def test_out_of_scope_request_outranks_simplify(self) -> None:
+        # Правило стоит первым, поэтому тип риска решает даже тогда,
+        # когда severity сама по себе увела бы бриф в SIMPLIFY.
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.high],
+                statuses=[CriterionEvaluationStatus.not_met],
+                risk_types=["out_of_scope_request"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.reject)
+        self.assertEqual(result.triggered_rules[0].rule_key, "reject_out_of_scope")
+
+    def test_other_risk_types_keep_severity_based_status(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.high],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["scope_too_large"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.simplify)
+        self.assertEqual(result.triggered_rules[0].rule_key, "simplify_high_risk")
 
     def test_reasons_hold_only_rule_description(self) -> None:
         result = self.arbiter.arbitrate_assessment(

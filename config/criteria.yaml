@@ -116,6 +116,36 @@ evaluation:
         - material_readiness
         - student_fit
   criteria:
+    # Eligibility gate. It is evaluated first, before the other criteria.
+    # Extend status_signals when a new refusal ground appears.
+    # Keep list items free of colons - the YAML reader turns such an item into a mapping.
+    - key: request_eligibility
+      title: Request eligibility
+      description: The brief orders work whose digital result is delivered to the customer, and is not an offer of cooperation, partnership, joint development or use of the platform for the author's own or joint educational activity.
+      complexity: high
+      allowed_values:
+        - met
+        - not_met
+        - insufficient_information
+      decision_thresholds:
+        min_score: 0
+        max_score: 0
+        conditions:
+          - the request offers cooperation instead of a project task
+          - no digital artefact is delivered to the customer
+        description: A request that fails eligibility is rejected, not clarified.
+      status_signals:
+        - partnership_offer
+        - joint_course_offer
+        - platform_placement_request
+        - advertising_integration
+        - expert_or_event_request
+        - service_sales_offer
+        - staffing_request
+        - permanent_maintenance_request
+        - no_digital_artefact
+        - non_digital_deliverable
+        - artefact_for_third_party
     - key: goal_clarity
       title: Goal clarity
       description: The brief explains the purpose of the project and the problem to solve.
@@ -272,6 +302,31 @@ evaluation:
     version: "1"
     description: Risk taxonomy for Masterskaya student projects.
     risk_types:
+      # Raised when request_eligibility is not met. Drives the reject_out_of_scope rule.
+      - key: out_of_scope_request
+        title: Request outside the Masterskaya format
+        description: The brief is not a project task for a graduate team. It offers cooperation or partnership, asks to place or co-create a course on the platform, sells services, looks for experts or a single hire, or delivers no digital artefact to the customer.
+        severity_hint: critical
+        signals:
+          - partnership_offer
+          - joint_course_offer
+          - platform_placement_request
+          - advertising_integration
+          - expert_or_event_request
+          - service_sales_offer
+          - staffing_request
+          - permanent_maintenance_request
+          - no_digital_artefact
+          - non_digital_deliverable
+          - artefact_for_third_party
+        evidence_hints:
+          - cooperation offered
+          - course on the platform
+          - services sold
+          - experts or speakers wanted
+          - one hire or permanent support
+          - no digital deliverable
+          - result for a third party
       - key: missing_materials
         title: Missing materials or access
         description: Required data, content, mockups, API access or links are absent or uncertain.
@@ -328,6 +383,18 @@ evaluation:
     description: Deterministic rules for final brief recommendation.
     default_status: MENTOR_REVIEW
     rules:
+      # Must stay first: the arbiter takes the first matching rule, and a lower
+      # position would let simplify_high_risk win when severity is not critical.
+      - key: reject_out_of_scope
+        title: Reject out of scope request
+        description: Reject when the request does not fit the Masterskaya project format.
+        status: REJECT
+        confidence: 1.0
+        conditions:
+          - field: risk.types
+            operator: any_in
+            value:
+              - out_of_scope_request
       - key: reject_critical_risk
         title: Reject critical risk
         description: Reject when a critical student-project risk is present.

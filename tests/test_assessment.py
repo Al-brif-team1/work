@@ -367,8 +367,8 @@ class TestAssessmentPreparation(unittest.TestCase):
             metadata_filters={"category": "assessment"},
         )
 
-        self.assertEqual(prepared.criteria_count, 5)
-        self.assertEqual(prepared.risk_types_count, 4)
+        self.assertEqual(prepared.criteria_count, 6)
+        self.assertEqual(prepared.risk_types_count, 5)
         self.assertEqual(prepared.retrieved_context[0].document.id, "kb-1")
         self.assertEqual(prepared.context.retrieved_context[0].document.id, "kb-1")
         self.assertIn("Build a support bot", retriever.calls[0]["query"])
@@ -446,19 +446,20 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertEqual(
             risk_type_keys,
             [
+                "out_of_scope_request",
                 "missing_materials",
                 "scope_too_large",
                 "mentor_expertise_required",
                 "production_criticality",
             ],
         )
-        self.assertEqual(prepared.risk_types_count, 4)
+        self.assertEqual(prepared.risk_types_count, 5)
         for risk_type_key in risk_type_keys:
             self.assertIn(risk_type_key, prompt)
         self.assertNotIn("placeholder_risk", prompt)
         self.assertNotIn("Deprecated placeholder risk", prompt)
         self.assertEqual(result.risks[0].type, "scope_too_large")
-        self.assertEqual(result.technical_info.risk_types_count, 4)
+        self.assertEqual(result.technical_info.risk_types_count, 5)
 
     def test_successful_assessment_uses_prompt_manager_and_llm_runner(self) -> None:
         runner = FakeLLMRunner(make_assessment_payload())
@@ -482,8 +483,8 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertEqual(result.criterion_evaluations[0].criterion, "placeholder_criterion")
         self.assertEqual(result.evidence[0].quote, "external channels")
         self.assertEqual(result.summary, "Assessment identified one risk.")
-        self.assertEqual(result.technical_info.criteria_count, 5)
-        self.assertEqual(result.technical_info.risk_types_count, 4)
+        self.assertEqual(result.technical_info.criteria_count, 6)
+        self.assertEqual(result.technical_info.risk_types_count, 5)
         self.assertEqual(result.technical_info.retrieved_context_count, 1)
         self.assertTrue(result.technical_info.retriever_used)
         self.assertEqual(runner.calls[0]["output_model"], AssessmentPayload)

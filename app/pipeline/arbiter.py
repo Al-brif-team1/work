@@ -277,6 +277,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             "risk.medium_count": signals.get("risk.medium_count"),
             "risk.high_count": signals.get("risk.high_count"),
             "risk.critical_count": signals.get("risk.critical_count"),
+            "risk.types": signals.get("risk.types"),
             "evaluation.total_count": signals.get("evaluation.total_count"),
             "evaluation.met_count": signals.get("evaluation.met_count"),
             "evaluation.not_met_count": signals.get("evaluation.not_met_count"),
@@ -475,6 +476,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             "risk.high_count": risk_counts["high_count"],
             "risk.critical_count": risk_counts["critical_count"],
             "risk.max_severity": risk_counts["max_severity"],
+            "risk.types": [risk.type for risk in risks],
             "evaluation.total_count": evaluation_counts["total_count"],
             "evaluation.met_count": evaluation_counts["met_count"],
             "evaluation.not_met_count": evaluation_counts["not_met_count"],
@@ -528,6 +530,10 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
                 risks,
                 {self._risk_max_severity(risks)},
             ),
+            "risk.types": [
+                f"{risk.type}: {risk.description}"
+                for risk in risks
+            ],
             "evaluation.total_count": [
                 f"{item.criterion}: {item.explanation or item.criterion}"
                 for item in criterion_evaluations
@@ -577,6 +583,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             "risk.high_count",
             "risk.critical_count",
             "risk.max_severity",
+            "risk.types",
             "evaluation.total_count",
             "evaluation.met_count",
             "evaluation.not_met_count",

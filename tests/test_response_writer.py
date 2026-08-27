@@ -828,6 +828,53 @@ class TestResponseWriterReasons(unittest.TestCase):
             updated.final_response_text,
         )
 
+    def test_out_of_scope_reject_letter_explains_the_ground(self) -> None:
+        # Заявка не про формат Мастерской: заказчик должен увидеть причину
+        # отказа, а не уточняющие вопросы.
+        base = make_reject_context()
+        assessment = base.assessment_result
+        assert assessment is not None
+        context = base.with_assessment_result(
+            assessment.model_copy(
+                update={
+                    "criterion_evaluations": [
+                        CriterionEvaluation(
+                            criterion="request_eligibility",
+                            criterion_title="Request eligibility",
+                            status=CriterionEvaluationStatus.not_met,
+                            explanation=(
+                                "Заявка предлагает сотрудничество, а не задачу "
+                                "с цифровым результатом для заказчика."
+                            ),
+                        ),
+                    ],
+                    "risks": [
+                        Risk(
+                            type="out_of_scope_request",
+                            description=(
+                                "Бриф не содержит проектной задачи для команды "
+                                "выпускников."
+                            ),
+                            severity=RiskSeverity.critical,
+                        )
+                    ],
+                }
+            )
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+
+        self.assertIn("Основания оценки:", updated.final_response_text)
+        self.assertIn(
+            "Заявка предлагает сотрудничество",
+            updated.final_response_text,
+        )
+        self.assertIn(
+            "Бриф не содержит проектной задачи",
+            updated.final_response_text,
+        )
+        self.assertNotIn("Вопросы", updated.final_response_text)
+
     def test_reasons_block_is_omitted_when_nothing_explains_verdict(self) -> None:
         # Единственный критерий выполнен, рисков нет - обосновывать отказ нечем.
         updated = ResponseWriterStage().run_context(

@@ -22,8 +22,25 @@ class TestCriteriaConfig(unittest.TestCase):
 
         self.assertIsInstance(config.evaluation, EvaluationConfiguration)
         self.assertEqual(config.evaluation.project_types[0].key, "development")
-        self.assertEqual(config.evaluation.criteria[0].key, "goal_clarity")
+        self.assertEqual(config.evaluation.criteria[0].key, "request_eligibility")
         self.assertEqual(config.evaluation.required_fields[0].key, "project_goal")
+
+    def test_eligibility_gate_is_configured(self) -> None:
+        config = CriteriaLoader.load()
+
+        criteria_keys = [item.key for item in config.evaluation.criteria]
+        risk_keys = [
+            item.key for item in config.evaluation.risk_analysis.risk_types
+        ]
+        rules = config.evaluation.arbitration.rules
+
+        self.assertEqual(criteria_keys[0], "request_eligibility")
+        self.assertIn("out_of_scope_request", risk_keys)
+        self.assertEqual(rules[0].key, "reject_out_of_scope")
+        self.assertEqual(rules[0].status, "REJECT")
+        self.assertEqual(rules[0].conditions[0].field, "risk.types")
+        self.assertEqual(rules[0].conditions[0].operator, "any_in")
+        self.assertIn("out_of_scope_request", rules[0].conditions[0].value)
 
     def test_get_criteria_config_is_cached(self) -> None:
         sentinel = CriteriaLoader.load()
