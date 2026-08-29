@@ -146,6 +146,27 @@ evaluation:
         - no_digital_artefact
         - non_digital_deliverable
         - artefact_for_third_party
+    # Second gate. request_eligibility asks whether the brief orders work at all,
+    # this one asks whether the Masterskaya takes work on that subject.
+    # The topic list itself lives in evaluation.restricted_topics.
+    - key: topic_eligibility
+      title: Topic eligibility
+      description: The subject of the project is not on the list of topics the Masterskaya does not accept - gambling, crypto assets and Web3, or software that breaks the law and platform rules.
+      complexity: high
+      allowed_values:
+        - met
+        - not_met
+        - insufficient_information
+      decision_thresholds:
+        min_score: 0
+        max_score: 0
+        conditions:
+          - the subject of the project is on the restricted list
+        description: A restricted topic is rejected, not clarified or simplified.
+      status_signals:
+        - gambling
+        - crypto_assets
+        - malicious_software
     - key: goal_clarity
       title: Goal clarity
       description: The brief explains the purpose of the project and the problem to solve.
@@ -298,6 +319,55 @@ evaluation:
       conditions:
         - final decision is computed by arbitration rules
       description: LLM assessment is advisory; deterministic arbiter returns final status.
+  # Topics the Masterskaya does not take, whatever the quality of the brief.
+  # Read twice - by the deterministic matcher in AssessmentStage and by the assessment
+  # prompt. Keywords are matched as substrings of normalised text, so give stems
+  # without endings. Order matters - the first matching topic wins.
+  restricted_topics:
+    version: "1"
+    description: Topics the Masterskaya does not accept as student projects.
+    topics:
+      - key: gambling
+        title: Азартные игры и ставки
+        reason_kind: policy
+        customer_reason: Мастерская не берёт проекты, связанные с азартными играми, ставками и лотереями.
+        keywords:
+          - казино
+          - букмекер
+          - ставк на спорт
+          - тотализатор
+          - беттинг
+          - лотере
+      - key: crypto_assets
+        title: Криптовалюты, токены и Web3
+        reason_kind: policy
+        customer_reason: Мастерская не берёт проекты, связанные с криптовалютами, токенами и Web3-сервисами.
+        keywords:
+          - криптобирж
+          - криптовалют
+          - крипто-кошел
+          - обмен криптовалют
+          - nft
+          - defi
+          - web3
+          - токен
+          - p2e
+          - play-to-earn
+      - key: malicious_software
+        title: Противоправное программное обеспечение
+        reason_kind: illegal
+        customer_reason: Заявка предполагает разработку программного обеспечения, которое нарушает закон и правила площадок, поэтому Мастерская её не рассматривает.
+        keywords:
+          - чит для
+          - читы для
+          - взлом аккаунт
+          - ddos
+          - spyware
+          - malware
+          - загрузчик вредонос
+          - массов рассылк
+          - массового спама
+          - накрутк
   risk_analysis:
     version: "1"
     description: Risk taxonomy for Masterskaya student projects.
@@ -327,6 +397,21 @@ evaluation:
           - one hire or permanent support
           - no digital deliverable
           - result for a third party
+      # Raised when topic_eligibility is not met. Drives the reject_restricted_topic rule.
+      # Set both by the deterministic matcher in AssessmentStage and by the assessment prompt.
+      - key: restricted_topic
+        title: Subject the Masterskaya does not take
+        description: The project is about gambling and betting, crypto assets, tokens or Web3, or software that breaks the law and platform rules. Such briefs are refused whatever their quality.
+        severity_hint: critical
+        signals:
+          - gambling
+          - crypto_assets
+          - malicious_software
+        evidence_hints:
+          - casino or betting platform
+          - crypto exchange or token wallet
+          - cheats or account cracking
+          - mass spam or follower fraud
       - key: missing_materials
         title: Missing materials or access
         description: Required data, content, mockups, API access or links are absent or uncertain.
@@ -362,7 +447,7 @@ evaluation:
           - unclear technical feasibility
       - key: production_criticality
         title: Production criticality
-        description: The customer expects production-grade reliability, security or operational responsibility.
+        description: The customer expects production-grade reliability, security or operational responsibility. This covers work where a defect harms people or breaks a regulated service - a high-risk medical device, air traffic control, or a state platform with a round-the-clock SLA. Judge the responsibility the result carries, not the industry - an analytics dashboard for a clinic is an ordinary project.
         severity_hint: critical
         signals:
           - production_critical
@@ -372,6 +457,9 @@ evaluation:
           - real users depend on system
           - personal data
           - critical operations
+          - medical device or diagnosis
+          - air traffic or transport control
+          - round-the-clock SLA obligation
     decision_thresholds:
       - min_score: 0
         max_score: 0
@@ -383,8 +471,20 @@ evaluation:
     description: Deterministic rules for final brief recommendation.
     default_status: MENTOR_REVIEW
     rules:
-      # Must stay first: the arbiter takes the first matching rule, and a lower
-      # position would let simplify_high_risk win when severity is not critical.
+      # These two named refusal rules must stay on top: the arbiter takes the first
+      # matching rule, and a lower position would let simplify_high_risk win when
+      # severity is not critical. They also outrank reject_critical_risk, which would
+      # give the same REJECT but a vaguer ground in the trace.
+      - key: reject_restricted_topic
+        title: Reject restricted topic
+        description: Reject when the subject of the project is on the list of topics the Masterskaya does not take.
+        status: REJECT
+        confidence: 1.0
+        conditions:
+          - field: risk.types
+            operator: any_in
+            value:
+              - restricted_topic
       - key: reject_out_of_scope
         title: Reject out of scope request
         description: Reject when the request does not fit the Masterskaya project format.

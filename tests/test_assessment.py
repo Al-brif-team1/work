@@ -22,6 +22,7 @@ from app.pipeline import (
     AssessmentPreparation,
     AssessmentStage,
 )
+from app.pipeline.assessment import RestrictedTopicMatcher
 from app.schemas import (
     AIContext,
     AssessmentEvidence,
@@ -367,8 +368,8 @@ class TestAssessmentPreparation(unittest.TestCase):
             metadata_filters={"category": "assessment"},
         )
 
-        self.assertEqual(prepared.criteria_count, 6)
-        self.assertEqual(prepared.risk_types_count, 5)
+        self.assertEqual(prepared.criteria_count, 7)
+        self.assertEqual(prepared.risk_types_count, 6)
         self.assertEqual(prepared.retrieved_context[0].document.id, "kb-1")
         self.assertEqual(prepared.context.retrieved_context[0].document.id, "kb-1")
         self.assertIn("Build a support bot", retriever.calls[0]["query"])
@@ -447,19 +448,20 @@ class TestAssessmentStage(unittest.TestCase):
             risk_type_keys,
             [
                 "out_of_scope_request",
+                "restricted_topic",
                 "missing_materials",
                 "scope_too_large",
                 "mentor_expertise_required",
                 "production_criticality",
             ],
         )
-        self.assertEqual(prepared.risk_types_count, 5)
+        self.assertEqual(prepared.risk_types_count, 6)
         for risk_type_key in risk_type_keys:
             self.assertIn(risk_type_key, prompt)
         self.assertNotIn("placeholder_risk", prompt)
         self.assertNotIn("Deprecated placeholder risk", prompt)
         self.assertEqual(result.risks[0].type, "scope_too_large")
-        self.assertEqual(result.technical_info.risk_types_count, 5)
+        self.assertEqual(result.technical_info.risk_types_count, 6)
 
     def test_successful_assessment_uses_prompt_manager_and_llm_runner(self) -> None:
         runner = FakeLLMRunner(make_assessment_payload())
@@ -483,8 +485,8 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertEqual(result.criterion_evaluations[0].criterion, "placeholder_criterion")
         self.assertEqual(result.evidence[0].quote, "external channels")
         self.assertEqual(result.summary, "Assessment identified one risk.")
-        self.assertEqual(result.technical_info.criteria_count, 6)
-        self.assertEqual(result.technical_info.risk_types_count, 5)
+        self.assertEqual(result.technical_info.criteria_count, 7)
+        self.assertEqual(result.technical_info.risk_types_count, 6)
         self.assertEqual(result.technical_info.retrieved_context_count, 1)
         self.assertTrue(result.technical_info.retriever_used)
         self.assertEqual(runner.calls[0]["output_model"], AssessmentPayload)
@@ -546,6 +548,193 @@ class TestAssessmentStage(unittest.TestCase):
 
         with self.assertRaisesRegex(AssessmentError, "Unable to assess brief"):
             stage.assess(make_context())
+
+
+def make_restricted_context(
+    text: str,
+    *,
+    goal: str = "Build a support bot",
+) -> AIContext:
+    """Собирает контекст с заданным текстом брифа и целью проекта. Два источника разведены, чтобы проверить, что матчер смотрит и в текст, и в извлеченные факты."""
+    brief = make_extracted_brief().model_copy(
+        update={
+            "project_goal": ExtractedFact(
+                status=FactStatus.explicit,
+                value=goal,
+                evidence=[goal],
+                confidence=0.9,
+            )
+        }
+    )
+    return (
+        AIContext.from_brief(BriefInputFactory().from_text(text))
+        .with_extracted_brief(brief)
+        .with_completeness_result(make_completeness_result())
+    )
+
+
+def make_config_without_restricted_topics() -> CriteriaConfig:
+    """Выполняет шаг «make config without restricted topics». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+    config = load_test_criteria_config()
+    evaluation = config.evaluation.model_copy(update={"restricted_topics": None})
+    return config.model_copy(update={"evaluation": evaluation})
+
+
+class TestRestrictedTopics(unittest.TestCase):
+    """Класс «TestRestrictedTopics» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
+
+    def test_matches_restricted_topic_in_brief_text(self) -> None:
+        matcher = RestrictedTopicMatcher(load_test_criteria_config())
+
+        hit = matcher.match(
+            make_restricted_context("Нужна криптобиржа с обменом токенов.")
+        )
+
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit.topic.key, "crypto_assets")
+        self.assertEqual(hit.keyword, "криптобирж")
+
+    def test_matches_restricted_topic_in_extracted_fact_only(self) -> None:
+        matcher = RestrictedTopicMatcher(load_test_criteria_config())
+
+        hit = matcher.match(
+            make_restricted_context(
+                "Здравствуйте, хотим обсудить новый проект.",
+                goal="Запустить онлайн-казино",
+            )
+        )
+
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit.topic.key, "gambling")
+        self.assertEqual(hit.source_title, "цель проекта")
+
+    def test_ordinary_brief_does_not_match(self) -> None:
+        matcher = RestrictedTopicMatcher(load_test_criteria_config())
+
+        hit = matcher.match(
+            make_restricted_context(
+                "Нужен телеграм-бот для записи клиентов в барбершоп.",
+                goal="Автоматизировать запись клиентов",
+            )
+        )
+
+        self.assertIsNone(hit)
+
+    def test_regulated_industry_is_not_a_restricted_topic(self) -> None:
+        matcher = RestrictedTopicMatcher(load_test_criteria_config())
+
+        hit = matcher.match(
+            make_restricted_context(
+                "Нужен дашборд посещаемости для медицинской клиники.",
+                goal="Собрать дашборд посещаемости",
+            )
+        )
+
+        self.assertIsNone(hit)
+
+    def test_long_source_is_trimmed_to_a_window_around_the_match(self) -> None:
+        matcher = RestrictedTopicMatcher(load_test_criteria_config())
+        filler = "рассказываем о себе и о своей компании много слов подряд "
+
+        hit = matcher.match(
+            make_restricted_context(
+                f"{filler * 4} нужна платформа для продажи NFT-коллекций. {filler * 4}",
+                goal="Запустить площадку",
+            )
+        )
+
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit.source_title, "текст брифа")
+        self.assertIn("nft", hit.fragment)
+        self.assertTrue(hit.fragment.startswith("…"))
+        self.assertTrue(hit.fragment.endswith("…"))
+        self.assertLess(len(hit.fragment), 200)
+
+    def test_matcher_is_silent_when_config_has_no_restricted_topics(self) -> None:
+        matcher = RestrictedTopicMatcher(make_config_without_restricted_topics())
+
+        hit = matcher.match(
+            make_restricted_context("Нужна криптобиржа с обменом токенов.")
+        )
+
+        self.assertIsNone(hit)
+
+    def test_restricted_topic_short_circuits_llm_and_retriever(self) -> None:
+        runner = FakeLLMRunner(AssertionError("LLM must not be called"))
+        retriever = FakeRetriever([make_search_result()])
+        stage = AssessmentStage(
+            llm_runner=runner,
+            retriever=retriever,
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        updated = stage.run_context(
+            make_restricted_context("Нужна криптобиржа с обменом токенов.")
+        )
+
+        self.assertEqual(runner.calls, [])
+        self.assertEqual(retriever.calls, [])
+        self.assertIsNotNone(updated.assessment_result)
+
+    def test_short_circuit_result_carries_the_ground_for_the_manager(self) -> None:
+        stage = AssessmentStage(
+            llm_runner=FakeLLMRunner(AssertionError("LLM must not be called")),
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        updated = stage.run_context(
+            make_restricted_context("Нужна криптобиржа с обменом токенов.")
+        )
+        result = updated.assessment_result
+
+        self.assertEqual(result.recommendation, AssessmentRecommendation.high_risk_review)
+        self.assertTrue(result.has_risks)
+        self.assertEqual(result.risks[0].type, "restricted_topic")
+        self.assertEqual(result.risks[0].severity, RiskSeverity.critical)
+        self.assertEqual(
+            result.criterion_evaluations[0].criterion, "topic_eligibility"
+        )
+        self.assertEqual(
+            result.criterion_evaluations[0].status,
+            CriterionEvaluationStatus.not_met,
+        )
+        # Менеджер видит только описания рисков, поэтому цитата обязана быть в них,
+        # а не только в отдельном поле evidence.
+        self.assertIn("криптобирж", result.risks[0].description)
+        self.assertEqual(result.technical_info.attempts, 0)
+
+    def test_ordinary_brief_still_reaches_the_llm(self) -> None:
+        runner = FakeLLMRunner(make_assessment_payload())
+        stage = AssessmentStage(
+            llm_runner=runner,
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        stage.run_context(
+            make_restricted_context(
+                "Нужен телеграм-бот для записи клиентов в барбершоп.",
+                goal="Автоматизировать запись клиентов",
+            )
+        )
+
+        self.assertEqual(len(runner.calls), 1)
+
+    def test_restricted_topics_reach_the_assessment_prompt(self) -> None:
+        stage = AssessmentStage(
+            llm_runner=FakeLLMRunner(make_assessment_payload()),
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        prepared = stage._preparation.prepare(make_context())
+        prompt = stage.build_prompt(prepared)
+
+        self.assertEqual(len(prepared.restricted_topics), 3)
+        for topic in prepared.restricted_topics:
+            self.assertIn(topic.key, prompt)
 
 
 if __name__ == "__main__":

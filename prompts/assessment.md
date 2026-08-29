@@ -2,7 +2,7 @@
 name: assessment
 version: "1"
 description: Evaluate criteria and risks for a project brief in one structured call.
-variables: normalized_brief, extracted_brief, completeness_result, criteria, risk_types, retrieved_context
+variables: normalized_brief, extracted_brief, completeness_result, criteria, risk_types, restricted_topics, retrieved_context
 output_model: AssessmentPayload
 ---
 # System
@@ -23,6 +23,13 @@ Judge the request as a whole. Doubt about the details of an ordinary project ord
 Missing information and wrong format are not the same thing. Too little data to judge eligibility means insufficient_information. A request that does not fit the format means not_met plus a risk of type out_of_scope_request with severity critical.
 When the request is not eligible, do not look for a way to save it.
 State the reason in one sentence in the explanation of the criterion and repeat it in the description of the risk.
+
+Check the topic_eligibility criterion next, before the remaining criteria.
+The two gates are different questions. request_eligibility asks whether the brief orders work at all; topic_eligibility asks whether the Masterskaya takes work on that subject.
+Judge the subject of the project, not the words used for it. The keywords of every restricted topic are examples, not a closed list: a platform for exchanging digital assets is crypto, and a service that grows engagement metrics through fake accounts is follower fraud.
+When the subject is restricted, set topic_eligibility to not_met and report a risk of type restricted_topic with severity critical. Name the matching topic in the explanation of the criterion and in the description of the risk.
+Doubt about an ordinary project order is not a ground for restriction. A customer from a regulated industry is not a restricted topic by itself - an analytics dashboard for a clinic or a booking service for a sports club is ordinary work.
+When no topic matches, set topic_eligibility to met and report no risk of type restricted_topic.
 
 Write the explanation of every criterion evaluation and the description of every risk in Russian; these two fields reach the customer.
 
@@ -49,6 +56,9 @@ Evaluation criteria:
 
 Risk types:
 {{risk_types}}
+
+Restricted topics:
+{{restricted_topics}}
 
 Retrieved context:
 {{retrieved_context}}

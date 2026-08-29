@@ -91,6 +91,14 @@ def write_criteria_yaml(path: Path) -> None:
                       - partnership_offer
                     evidence_hints:
                       - cooperation offered
+                  - key: restricted_topic
+                    title: Subject the Masterskaya does not take
+                    description: Project on a restricted subject.
+                    severity_hint: critical
+                    signals:
+                      - gambling
+                    evidence_hints:
+                      - casino or betting platform
                   - key: placeholder_risk
                     title: Placeholder risk
                     description: Placeholder risk definition.
@@ -110,6 +118,16 @@ def write_criteria_yaml(path: Path) -> None:
                 description: Test deterministic arbitration rules.
                 default_status: MENTOR_REVIEW
                 rules:
+                  - key: reject_restricted_topic
+                    title: Reject restricted topic
+                    description: Reject when the subject is on the restricted list.
+                    status: REJECT
+                    confidence: 1.0
+                    conditions:
+                      - field: risk.types
+                        operator: any_in
+                        value:
+                          - restricted_topic
                   - key: reject_out_of_scope
                     title: Reject out of scope request
                     description: Reject when the request does not fit the format.
@@ -398,6 +416,37 @@ class TestDeterministicArbiterStage(unittest.TestCase):
 
         self.assertEqual(result.final_status, DecisionStatus.reject)
         self.assertEqual(result.triggered_rules[0].rule_key, "reject_out_of_scope")
+
+    def test_reject_status_for_restricted_topic(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.critical],
+                statuses=[CriterionEvaluationStatus.not_met],
+                risk_types=["restricted_topic"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.reject)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key, "reject_restricted_topic"
+        )
+
+    def test_restricted_topic_outranks_generic_critical_risk(self) -> None:
+        # Оба правила дают REJECT, но именованное стоит выше: иначе основание
+        # отказа в трейсе выглядело бы как обычный критический риск.
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=False, missing=2),
+            make_assessment_result(
+                severities=[RiskSeverity.critical],
+                statuses=[CriterionEvaluationStatus.not_met],
+                risk_types=["restricted_topic"],
+            ),
+        )
+
+        self.assertEqual(
+            result.triggered_rules[0].rule_key, "reject_restricted_topic"
+        )
 
     def test_other_risk_types_keep_severity_based_status(self) -> None:
         result = self.arbiter.arbitrate_assessment(

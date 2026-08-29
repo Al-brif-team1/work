@@ -33,14 +33,50 @@ class TestCriteriaConfig(unittest.TestCase):
             item.key for item in config.evaluation.risk_analysis.risk_types
         ]
         rules = config.evaluation.arbitration.rules
+        rule_keys = [item.key for item in rules]
+        out_of_scope_rule = rules[rule_keys.index("reject_out_of_scope")]
 
         self.assertEqual(criteria_keys[0], "request_eligibility")
         self.assertIn("out_of_scope_request", risk_keys)
-        self.assertEqual(rules[0].key, "reject_out_of_scope")
-        self.assertEqual(rules[0].status, "REJECT")
-        self.assertEqual(rules[0].conditions[0].field, "risk.types")
-        self.assertEqual(rules[0].conditions[0].operator, "any_in")
-        self.assertIn("out_of_scope_request", rules[0].conditions[0].value)
+        self.assertEqual(out_of_scope_rule.status, "REJECT")
+        self.assertEqual(out_of_scope_rule.conditions[0].field, "risk.types")
+        self.assertEqual(out_of_scope_rule.conditions[0].operator, "any_in")
+        self.assertIn(
+            "out_of_scope_request", out_of_scope_rule.conditions[0].value
+        )
+        # Раньше правило проверялось по индексу 0. Гейтов стало два, поэтому позицию
+        # сторожим явно: оба отказа должны стоять выше упрощения, иначе на некритической
+        # severity их перехватит simplify_high_risk.
+        self.assertLess(
+            rule_keys.index("reject_out_of_scope"),
+            rule_keys.index("simplify_high_risk"),
+        )
+        self.assertLess(
+            rule_keys.index("reject_restricted_topic"),
+            rule_keys.index("simplify_high_risk"),
+        )
+
+    def test_restricted_topics_are_configured(self) -> None:
+        config = CriteriaLoader.load()
+
+        restricted_topics = config.evaluation.restricted_topics
+        criteria_keys = [item.key for item in config.evaluation.criteria]
+        risk_keys = [
+            item.key for item in config.evaluation.risk_analysis.risk_types
+        ]
+
+        self.assertIsNotNone(restricted_topics)
+        self.assertIn("topic_eligibility", criteria_keys)
+        self.assertIn("restricted_topic", risk_keys)
+        topic_keys = [item.key for item in restricted_topics.topics]
+        self.assertEqual(
+            topic_keys, ["gambling", "crypto_assets", "malicious_software"]
+        )
+        for topic in restricted_topics.topics:
+            # Пустая тема молча перестала бы срабатывать, а текст причины уходит
+            # в описание риска, которое читает менеджер.
+            self.assertTrue(topic.keywords)
+            self.assertTrue(topic.customer_reason)
 
     def test_get_criteria_config_is_cached(self) -> None:
         sentinel = CriteriaLoader.load()
