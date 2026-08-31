@@ -169,11 +169,11 @@ def _build_direction_alias_map(
         if project_type.key not in _DIRECTION_VALUES:
             continue
         direction = project_type.key
-        aliases[_normalize_direction_text(project_type.key)] = direction
-        aliases[_normalize_direction_text(project_type.title)] = direction
-        aliases[_normalize_direction_text(project_type.description)] = direction
+        aliases[normalize_lookup_text(project_type.key)] = direction
+        aliases[normalize_lookup_text(project_type.title)] = direction
+        aliases[normalize_lookup_text(project_type.description)] = direction
         for alias in project_type.aliases:
-            aliases[_normalize_direction_text(alias)] = direction
+            aliases[normalize_lookup_text(alias)] = direction
     return aliases
 
 
@@ -181,7 +181,7 @@ def _classify_exact_direction(
     value: str | None,
     aliases: dict[str, DirectionValue],
 ) -> DirectionValue | None:
-    normalized = _normalize_direction_text(value)
+    normalized = normalize_lookup_text(value)
     if not normalized:
         return None
     return aliases.get(normalized)
@@ -190,11 +190,11 @@ def _classify_exact_direction(
 def _find_direction_signals(values: list[str | None]) -> set[DirectionValue]:
     matches: set[DirectionValue] = set()
     for value in values:
-        normalized = _normalize_direction_text(value)
+        normalized = normalize_lookup_text(value)
         if not normalized:
             continue
         for direction, signals in _FALLBACK_DIRECTION_SIGNALS.items():
-            if any(_contains_direction_signal(normalized, signal) for signal in signals):
+            if any(contains_signal(normalized, signal) for signal in signals):
                 matches.add(direction)
 
     if "ai" in matches:
@@ -204,8 +204,9 @@ def _find_direction_signals(values: list[str | None]) -> set[DirectionValue]:
     return matches
 
 
-def _contains_direction_signal(value: str, signal: str) -> bool:
-    normalized_signal = _normalize_direction_text(signal)
+def contains_signal(value: str, signal: str) -> bool:
+    """Ищет сигнал в уже нормализованном тексте. Короткие латинские сигналы вроде «ai» или «nft» проверяются по границам слова, иначе они всплывали бы внутри посторонних слов; длинные и кириллические ищутся подстрокой, чтобы ловить любые окончания. Нужна и классификатору направления, и матчеру запрещённых тем."""
+    normalized_signal = normalize_lookup_text(signal)
     if not normalized_signal:
         return False
     if len(normalized_signal) <= 3 and normalized_signal.isascii():
@@ -214,7 +215,8 @@ def _contains_direction_signal(value: str, signal: str) -> bool:
     return normalized_signal in value
 
 
-def _normalize_direction_text(value: str | None) -> str:
+def normalize_lookup_text(value: str | None) -> str:
+    """Приводит текст к виду, пригодному для поиска сигналов: нижний регистр, пунктуация в пробелы, схлопнутые пробелы. Смысл не меняется, убирается только то, что мешает сравнению."""
     if value is None:
         return ""
     value = value.strip().lower()

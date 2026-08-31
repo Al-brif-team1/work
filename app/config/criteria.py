@@ -79,6 +79,28 @@ class ProjectType(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RestrictedTopic(BaseModel):
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
+
+    key: str
+    title: str
+    reason_kind: str
+    customer_reason: str
+    keywords: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RestrictedTopicsConfiguration(BaseModel):
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
+
+    version: str
+    description: str
+    topics: list[RestrictedTopic] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class RiskType(BaseModel):
     """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
@@ -148,6 +170,9 @@ class EvaluationConfiguration(BaseModel):
     criteria: list[Criterion]
     required_fields: list[RequiredField]
     decision_thresholds: list[DecisionThresholds] = Field(default_factory=list)
+    # Необязательная: урезанные конфиги в тестах арбитра описывают только правила,
+    # и без запрещённых тем они должны грузиться по-прежнему.
+    restricted_topics: RestrictedTopicsConfiguration | None = None
     risk_analysis: RiskAnalysisConfiguration | None = None
     arbitration: ArbitrationConfiguration | None = None
 

@@ -13,22 +13,25 @@ from app.config import (
     CriteriaConfigError,
     CriteriaLoader,
     Criterion,
+    RestrictedTopic,
     RiskType,
     get_criteria_config,
 )
 from app.llm.runner import LLMRunResult, LLMRunner
 from app.pipeline.base import BaseLLMStage
+from app.pipeline.result_builder import contains_signal, normalize_lookup_text
 from app.prompts import PromptManager, RenderedPrompt
 from app.schemas.ai_context import AIContext
 from app.schemas.assessment import (
     AssessmentEvidence,
     AssessmentPayload,
+    AssessmentRecommendation,
     AssessmentResult,
     AssessmentTechnicalInfo,
 )
-from app.schemas.evaluation import CriterionEvaluation
+from app.schemas.evaluation import CriterionEvaluation, CriterionEvaluationStatus
 from app.schemas.knowledge import SearchResult
-from app.schemas.risk import Risk
+from app.schemas.risk import Risk, RiskSeverity
 from app.tracing.tracing import TracingClient
 
 if TYPE_CHECKING:
@@ -62,6 +65,7 @@ class AssessmentPreparedInput(BaseModel):
     criteria_config: CriteriaConfig
     criteria: list[Criterion]
     risk_types: list[RiskType]
+    restricted_topics: list[RestrictedTopic] = Field(default_factory=list)
     retrieved_context: list[SearchResult] = Field(default_factory=list)
     retrieval_query: str | None = None
     metadata_filters: dict[str, object] | None = None
@@ -98,6 +102,131 @@ class AssessmentPreparedInput(BaseModel):
             ],
             "metadata": self.context.metadata,
         }
+
+
+class RestrictedTopicHit(BaseModel):
+    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
+
+    topic: RestrictedTopic
+    keyword: str
+    source_title: str
+    fragment: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RestrictedTopicMatcher:
+    """[РОЛЬ В КОНВЕЙЕРЕ] Сверяет бриф со списком тем, которые Мастерская не берет. Работает обычным кодом, без ИИ: решение о запрете не должно зависеть от модели, температуры или попытки переубедить ее текстом брифа. Матчер намеренно грубый - лишнее срабатывание стоит менеджеру нескольких секунд, а пропущенная тема уезжает дальше как обычный проект."""
+
+    # Порог, после которого цитата в письме менеджеру обрезается до окна вокруг совпадения.
+    _MAX_FRAGMENT_LENGTH = 160
+    _FRAGMENT_MARGIN = 60
+
+    def __init__(self, criteria_config: CriteriaConfig) -> None:
+        """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
+        configuration = criteria_config.evaluation.restricted_topics
+        self._topics = list(configuration.topics) if configuration is not None else []
+
+    def match(self, context: AIContext) -> RestrictedTopicHit | None:
+        """Возвращает первую сработавшую тему или None. Порядок тем в конфиге задает приоритет, а источники перебираются от точных извлеченных фактов к тексту брифа: так в цитату попадает короткая формулировка, а не кусок всего письма."""
+        if not self._topics:
+            return None
+
+        sources = self._build_sources(context)
+        for topic in self._topics:
+            for source_title, source_text in sources:
+                for keyword in topic.keywords:
+                    if not contains_signal(source_text, keyword):
+                        continue
+                    return RestrictedTopicHit(
+                        topic=topic,
+                        keyword=keyword,
+                        source_title=source_title,
+                        fragment=self._fragment(source_text, keyword),
+                    )
+        return None
+
+    @staticmethod
+    def _build_sources(context: AIContext) -> list[tuple[str, str]]:
+        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
+        raw: list[tuple[str, str | None]] = []
+        extracted = context.extracted_brief
+        if extracted is not None:
+            raw.append(("цель проекта", extracted.project_goal.value))
+            raw.append(("ожидаемый результат", extracted.expected_result.value))
+            for task in extracted.tasks:
+                raw.append(("задача", task.value))
+            raw.append(("тип проекта", extracted.project_type.value))
+            raw.append(("направление", extracted.project_direction.value))
+        # Текст брифа идет последним: он самый полный, но и самый длинный.
+        raw.append(("текст брифа", context.normalized_text))
+
+        sources: list[tuple[str, str]] = []
+        for title, value in raw:
+            normalized = normalize_lookup_text(value)
+            if normalized:
+                sources.append((title, normalized))
+        return sources
+
+    @classmethod
+    def _fragment(cls, source_text: str, keyword: str) -> str:
+        """Готовит человекочитаемый текст из внутренних данных. Это нужно для промптов, объяснений или финального ответа."""
+        if len(source_text) <= cls._MAX_FRAGMENT_LENGTH:
+            return source_text
+
+        # Ищем подстрокой: совпадение по границам слова его тоже содержит,
+        # а точная позиция нужна только для того, чтобы вырезать окно цитаты.
+        position = source_text.find(normalize_lookup_text(keyword))
+        if position < 0:
+            return source_text[: cls._MAX_FRAGMENT_LENGTH].rstrip() + "…"
+
+        start = max(0, position - cls._FRAGMENT_MARGIN)
+        end = min(len(source_text), position + len(keyword) + cls._FRAGMENT_MARGIN)
+        fragment = source_text[start:end].strip()
+        prefix = "…" if start > 0 else ""
+        suffix = "…" if end < len(source_text) else ""
+        return f"{prefix}{fragment}{suffix}"
+
+
+def build_restricted_topic_assessment(hit: RestrictedTopicHit) -> AssessmentResult:
+    """Собирает тот же AssessmentResult, что вернул бы LLM-этап, но детерминированно и без вызова модели. Дальше по конвейеру разницы нет: арбитр читает типы рисков одинаково, откуда бы результат ни пришел."""
+    evidence = f"{hit.source_title}: {hit.fragment}"
+    description = (
+        f"{hit.topic.customer_reason} "
+        f"Тема «{hit.topic.title}» определена по формулировке — {evidence}."
+    )
+    return AssessmentResult(
+        criterion_evaluations=[
+            CriterionEvaluation(
+                criterion="topic_eligibility",
+                criterion_title=hit.topic.title,
+                status=CriterionEvaluationStatus.not_met,
+                evidence=[evidence],
+                explanation=hit.topic.customer_reason,
+                confidence=1.0,
+            )
+        ],
+        risks=[
+            Risk(
+                type="restricted_topic",
+                description=description,
+                severity=RiskSeverity.critical,
+                evidence=[evidence],
+                confidence=1.0,
+                notes=f"restricted_topic={hit.topic.key}; keyword={hit.keyword}",
+            )
+        ],
+        has_risks=True,
+        recommendation=AssessmentRecommendation.high_risk_review,
+        summary=hit.topic.customer_reason,
+        confidence=1.0,
+        technical_info=AssessmentTechnicalInfo(
+            attempts=0,
+            prompt_name=None,
+            trace_name="assessment.restricted_topic",
+            retriever_used=False,
+        ),
+    )
 
 
 class AssessmentStage(
@@ -139,6 +268,9 @@ class AssessmentStage(
             criteria_config=criteria_config,
             criteria_path=criteria_path,
         )
+        self._restricted_topics = RestrictedTopicMatcher(
+            self._preparation.criteria_config
+        )
         self._last_run_metadata: dict[str, Any] = {}
 
     def assess(
@@ -149,6 +281,16 @@ class AssessmentStage(
         metadata_filters: Mapping[str, object] | None = None,
     ) -> AIContext:
         """Выполняет шаг «assess». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        # Запрещенная тема - решение политики, а не оценка качества брифа, поэтому
+        # оно принимается обычным кодом. Замыкание стоит до prepare: так пропускается
+        # и вызов модели, и обращение к базе знаний.
+        self._preparation._validate_context(context)
+        hit = self._restricted_topics.match(context)
+        if hit is not None:
+            return context.with_assessment_result(
+                build_restricted_topic_assessment(hit)
+            )
+
         prepared = self._preparation.prepare(
             context,
             top_k=top_k,
@@ -262,6 +404,10 @@ class AssessmentStage(
                 "risk_types": [
                     item.model_dump(mode="json") for item in stage_input.risk_types
                 ],
+                "restricted_topics": [
+                    item.model_dump(mode="json")
+                    for item in stage_input.restricted_topics
+                ],
                 "retrieved_context": [
                     item.model_dump(mode="json")
                     for item in stage_input.retrieved_context
@@ -358,6 +504,11 @@ class AssessmentPreparation:
         self._config = self._load_config(criteria_config, criteria_path)
         self._criteria = list(self._config.evaluation.criteria)
         self._risk_types = list(self._config.evaluation.risk_analysis.risk_types)
+        # Секции может не быть: урезанные конфиги в тестах описывают только правила.
+        restricted_topics = self._config.evaluation.restricted_topics
+        self._restricted_topics = (
+            list(restricted_topics.topics) if restricted_topics is not None else []
+        )
 
     @property
     def criteria_config(self) -> CriteriaConfig:
@@ -373,6 +524,11 @@ class AssessmentPreparation:
     def risk_types(self) -> list[RiskType]:
         """Выполняет шаг «risk types». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return list(self._risk_types)
+
+    @property
+    def restricted_topics(self) -> list[RestrictedTopic]:
+        """Выполняет шаг «restricted topics». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        return list(self._restricted_topics)
 
     @property
     def retriever_used(self) -> bool:
@@ -401,6 +557,7 @@ class AssessmentPreparation:
             criteria_config=self._config,
             criteria=self._criteria,
             risk_types=self._risk_types,
+            restricted_topics=self._restricted_topics,
             retrieved_context=retrieved_context,
             retrieval_query=retrieval_query,
             metadata_filters=(
