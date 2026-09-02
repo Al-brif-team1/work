@@ -166,16 +166,24 @@ class DeterministicValidator:
         status = context.arbitration_result.final_status
         payload = context.response_payload or {}
 
-        if status == DecisionStatus.clarify:
+        question_statuses = {
+            DecisionStatus.clarify,
+            DecisionStatus.accept_with_clarifications,
+        }
+
+        if status in question_statuses:
             checked_fields.append("clarification_result")
             questions = self._extract_questions(payload)
             if not questions and context.clarification_result is None:
-                issues.append("CLARIFY responses must include clarification questions.")
+                issues.append(
+                    f"{status.value} responses must include clarification questions."
+                )
         else:
             questions = self._extract_questions(payload)
             if questions:
                 issues.append(
-                    "Clarification questions are not allowed unless status is CLARIFY."
+                    "Clarification questions are allowed only for CLARIFY "
+                    "or ACCEPT_WITH_CLARIFICATIONS."
                 )
 
         if status == DecisionStatus.simplify:
@@ -189,6 +197,8 @@ class DeterministicValidator:
 
         if status == DecisionStatus.accept:
             checked_fields.append("acceptance_consistency")
+        elif status == DecisionStatus.accept_with_clarifications:
+            checked_fields.append("acceptance_with_clarifications_consistency")
         elif status == DecisionStatus.reject:
             checked_fields.append("rejection_consistency")
         elif status == DecisionStatus.clarify:
@@ -198,9 +208,10 @@ class DeterministicValidator:
         else:
             checked_fields.append("mentor_review_consistency")
 
-        if status != DecisionStatus.clarify and context.clarification_result:
+        if status not in question_statuses and context.clarification_result:
             warnings.append(
-                "Clarification questions were provided even though the final status is not CLARIFY."
+                "Clarification questions were provided even though the final status "
+                "is not CLARIFY or ACCEPT_WITH_CLARIFICATIONS."
             )
         if status != DecisionStatus.simplify and context.mvp_planning_result:
             warnings.append(
@@ -356,6 +367,13 @@ class DeterministicValidator:
         normalized = DeterministicValidator._normalize_text(response_text)
         contradictions: dict[DecisionStatus, list[str]] = {
             DecisionStatus.accept: [
+                "did not pass",
+                "does not pass",
+                "rejected",
+                "failed criteria",
+                "requires rejection",
+            ],
+            DecisionStatus.accept_with_clarifications: [
                 "did not pass",
                 "does not pass",
                 "rejected",

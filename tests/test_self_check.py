@@ -309,6 +309,25 @@ class TestDeterministicValidator(unittest.TestCase):
             any("clarification questions" in issue.lower() for issue in result.issues)
         )
 
+    def test_allows_questions_for_accept_with_clarifications_status(self) -> None:
+        validator = DeterministicValidator()
+        context = make_context(
+            DecisionStatus.accept_with_clarifications,
+            "The project is accepted with clarifications.",
+            {
+                "status": "ACCEPT_WITH_CLARIFICATIONS",
+                "questions": ["Which materials are available?"],
+            },
+        )
+
+        result = validator.validate(context)
+
+        self.assertTrue(result.is_valid)
+        self.assertIn(
+            "acceptance_with_clarifications_consistency",
+            result.checked_fields,
+        )
+
     def test_requires_mvp_plan_for_simplify_status(self) -> None:
         validator = DeterministicValidator()
         context = make_context(

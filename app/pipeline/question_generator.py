@@ -5,12 +5,21 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app.config import (
+    CriteriaConfig,
+    CriteriaConfigError,
+    CriteriaLoader,
+    get_criteria_config,
+)
 from app.pipeline.contracts import BaseStage
 from app.schemas import (
     AIContext,
     AssessmentRecommendation,
+    ArbitrationResult,
     ClarificationQuestion,
     CompletenessResult,
+    CompletenessItem,
+    DecisionStatus,
     QuestionGenerationResult,
     QuestionGenerationTechnicalInfo,
 )
@@ -31,6 +40,8 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
     def __init__(
         self,
         *,
+        criteria_config: CriteriaConfig | None = None,
+        criteria_path: str | Path | None = None,
         templates: dict[str, str] | None = None,
         templates_path: str | Path | None = None,
         tracing_client: TracingClient | None = None,
@@ -40,8 +51,28 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
             stage_name=self.__class__.__name__,
             tracing_client=tracing_client or NoOpTracingClient(),
         )
+        if criteria_config is not None and criteria_path is not None:
+            raise ValueError("Pass either criteria_config or criteria_path, not both")
         if templates is not None and templates_path is not None:
             raise ValueError("Pass either templates or templates_path, not both")
+
+        if criteria_config is not None:
+            config = criteria_config
+        elif criteria_path is not None:
+            try:
+                config = CriteriaLoader.load(Path(criteria_path))
+            except CriteriaConfigError as exc:
+                raise QuestionGeneratorConfigError(str(exc)) from exc
+        else:
+            try:
+                config = get_criteria_config()
+            except CriteriaConfigError as exc:
+                raise QuestionGeneratorConfigError(str(exc)) from exc
+
+        self._customer_field_roles = {
+            field_def.key: field_def.customer_field_role
+            for field_def in config.evaluation.required_fields
+        }
         self._templates = (
             dict(templates)
             if templates is not None
@@ -53,12 +84,17 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
         completeness_result: CompletenessResult,
         *,
         assessment_recommendation: AssessmentRecommendation | None = None,
+        arbitration_result: ArbitrationResult | None = None,
     ) -> QuestionGenerationResult:
         """Выполняет шаг «generate». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         questions: list[ClarificationQuestion] = []
         missing_template_fields: list[str] = []
 
-        for index, item in enumerate(completeness_result.missing_information, start=1):
+        question_items = self._select_question_items(
+            completeness_result=completeness_result,
+            arbitration_result=arbitration_result,
+        )
+        for index, item in enumerate(question_items, start=1):
             template = self._templates.get(item.field_key)
             if template is None:
                 missing_template_fields.append(item.field_key)
@@ -109,6 +145,7 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
                 if context.assessment_result is not None
                 else None
             ),
+            arbitration_result=context.arbitration_result,
         )
         return context.with_clarification_result(result)
 
@@ -123,6 +160,41 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
     def _build_stage_exception(self, exc: Exception) -> Exception:
         """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return exc
+
+    def _select_question_items(
+        self,
+        *,
+        completeness_result: CompletenessResult,
+        arbitration_result: ArbitrationResult | None,
+    ) -> list[CompletenessItem]:
+        """Select customer-facing completeness items that match the final decision."""
+        expected_role: str | None = None
+        if arbitration_result is None:
+            expected_role = "blocking"
+            items = [
+                *completeness_result.missing_information,
+                *completeness_result.clarification_information,
+            ]
+        elif arbitration_result.final_status is DecisionStatus.clarify:
+            expected_role = "blocking"
+            items = [
+                *completeness_result.missing_information,
+                *completeness_result.clarification_information,
+            ]
+        elif (
+            arbitration_result.final_status
+            is DecisionStatus.accept_with_clarifications
+        ):
+            expected_role = "optional"
+            items = list(completeness_result.optional_missing_information)
+        else:
+            items = []
+
+        return [
+            item
+            for item in items
+            if self._customer_field_roles.get(item.field_key) == expected_role
+        ]
 
     @staticmethod
     def _build_summary(

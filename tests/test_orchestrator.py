@@ -192,9 +192,23 @@ def _minimal_extraction_payload() -> dict[str, Any]:
         "technologies": [],
         "stack": [],
         "constraints": [],
-        "deadlines": [],
+        "deadlines": [
+            {
+                "status": "explicit",
+                "value": "РЎСЂРѕРє РјРѕР¶РЅРѕ СѓС‚РѕС‡РЅРёС‚СЊ РЅР° СЃС‚Р°СЂС‚Рµ РїСЂРѕРµРєС‚Р°.",
+                "evidence": ["СЃСЂРѕРє РЅР° СЃС‚Р°СЂС‚Рµ"],
+                "confidence": 0.8,
+            }
+        ],
         "existing_resources": [],
-        "integrations": [],
+        "integrations": [
+            {
+                "status": "explicit",
+                "value": "Р’РЅРµС€РЅРёРµ РёРЅС‚РµРіСЂР°С†РёРё РЅРµ С‚СЂРµР±СѓСЋС‚СЃСЏ.",
+                "evidence": ["РёРЅС‚РµРіСЂР°С†РёРё РЅРµ С‚СЂРµР±СѓСЋС‚СЃСЏ"],
+                "confidence": 0.8,
+            }
+        ],
         "other_facts": [],
     }
 

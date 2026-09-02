@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -42,6 +42,9 @@ class Criterion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+CustomerFieldRole = Literal["blocking", "optional", "internal"]
+
+
 class RequiredField(BaseModel):
     """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
@@ -50,6 +53,7 @@ class RequiredField(BaseModel):
     title: str
     description: str
     required: bool = True
+    customer_field_role: CustomerFieldRole
     allowed_values: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")

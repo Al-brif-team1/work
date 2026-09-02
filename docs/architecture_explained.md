@@ -54,6 +54,7 @@ CompletenessCheckStage [PYTHON]
 CompletenessResult
 ├── present_information
 ├── missing_information
+├── optional_missing_information
 ├── clarification_information
 └── level
      │
@@ -73,7 +74,7 @@ DeterministicArbiterStage [PYTHON]
      │
      ▼
 ArbitrationResult
-├── final_status: ACCEPT / REJECT / CLARIFY / SIMPLIFY / MENTOR_REVIEW
+├── final_status: REJECT / CLARIFY / SIMPLIFY / MENTOR_REVIEW / ACCEPT_WITH_CLARIFICATIONS / ACCEPT
 ├── reasons
 ├── evidence
 └── triggered_rules
@@ -1146,8 +1147,12 @@ _build_signals()
 signals
 ├── completeness.is_complete
 ├── completeness.missing_count
-├── risk.max_severity
-├── risk.high_count
+├── completeness.blocking_missing_count
+├── completeness.blocking_clarification_count
+├── completeness.optional_missing_count
+├── completeness.optional_clarification_count
+├── risk.types
+├── risk.unknown_type_count
 ├── evaluation.not_met_count
 └── ...
           │
@@ -1179,11 +1184,12 @@ AIContext.with_arbitration_result()
 
 Детерминированный "судья" pipeline. Он превращает аналитические результаты в финальный статус:
 
-- `ACCEPT`;
 - `REJECT`;
 - `CLARIFY`;
 - `SIMPLIFY`;
 - `MENTOR_REVIEW`.
+- `ACCEPT_WITH_CLARIFICATIONS`;
+- `ACCEPT`.
 
 ### Зачем он нужен
 
@@ -1219,7 +1225,11 @@ Arbiter поддерживает только фиксированный наб�
 completeness.*
 ├── is_complete
 ├── missing_count
+├── blocking_missing_count
 ├── clarification_count
+├── blocking_clarification_count
+├── optional_missing_count
+├── optional_clarification_count
 └── present_count
 
 risk.*
@@ -1229,7 +1239,10 @@ risk.*
 ├── medium_count
 ├── high_count
 ├── critical_count
-└── max_severity
+├── max_severity
+├── types
+├── unknown_type_count
+└── unknown_types
 
 evaluation.*
 ├── total_count
@@ -1243,30 +1256,41 @@ evaluation.*
 
 Текущий порядок:
 
-1. `reject_critical_risk`
-   - если `risk.max_severity in ["critical"]`;
+1. `reject_by_business_risk`
+   - если `risk.types` содержит `restricted_topic`, `out_of_scope_request` или `production_criticality`;
    - статус `REJECT`;
    - приоритет самый высокий.
 
-2. `simplify_high_risk`
-   - если `risk.max_severity in ["high"]`;
-   - статус `SIMPLIFY`.
-
-3. `clarify_missing_information`
-   - если `completeness.missing_count > 0`;
+2. `clarify_blocking_missing_information`
+   - если `completeness.blocking_missing_count > 0`;
    - статус `CLARIFY`.
 
-4. `mentor_review_insufficient_information`
-   - если `evaluation.insufficient_information_count > 0`;
-   - и `completeness.missing_count == 0`;
+3. `clarify_blocking_uncertainty`
+   - если `completeness.blocking_clarification_count > 0`;
+   - статус `CLARIFY`.
+
+4. `simplify_scope_too_large`
+   - если `risk.types` содержит `scope_too_large`;
+   - статус `SIMPLIFY`.
+
+5. `mentor_review_expertise_required`
+   - если `risk.types` содержит `mentor_expertise_required`;
    - статус `MENTOR_REVIEW`.
 
-5. `accept_ready`
-   - если бриф complete;
-   - max risk `none` или `low`;
-   - нет `not_met`;
-   - нет `insufficient_information`;
-   - нет `risk_detected`;
+6. `mentor_review_unknown_risk_type`
+   - если `risk.unknown_type_count > 0`;
+   - статус `MENTOR_REVIEW`.
+
+7. `accept_with_missing_optional_information`
+   - если `completeness.optional_missing_count > 0`;
+   - статус `ACCEPT_WITH_CLARIFICATIONS`.
+
+8. `accept_with_optional_uncertainty`
+   - если `completeness.optional_clarification_count > 0`;
+   - статус `ACCEPT_WITH_CLARIFICATIONS`.
+
+9. `accept_ready`
+   - если нет blocking missing/uncertain и optional missing/uncertain customer-facing gaps;
    - статус `ACCEPT`.
 
 Если ничего не совпало, default status - `MENTOR_REVIEW`.
@@ -1276,23 +1300,27 @@ evaluation.*
 Фактический приоритет такой:
 
 ```text
-critical risk
+business reject risk.type
     ↓
 REJECT
 
-иначе high risk
-    ↓
-SIMPLIFY
-
-иначе missing required information
+иначе blocking missing/uncertain customer-facing fields
     ↓
 CLARIFY
 
-иначе criteria insufficient information
+иначе scope_too_large
+    ↓
+SIMPLIFY
+
+иначе mentor_expertise_required или unknown risk.type
     ↓
 MENTOR_REVIEW
 
-иначе fully ready and low/no risks
+иначе optional missing/uncertain customer-facing fields
+    ↓
+ACCEPT_WITH_CLARIFICATIONS
+
+иначе нет более приоритетных оснований и customer-facing gaps
     ↓
 ACCEPT
 
@@ -1300,6 +1328,8 @@ ACCEPT
     ↓
 MENTOR_REVIEW
 ```
+
+`risk.max_severity`, `risk.high_count`, `risk.critical_count`, `completeness.missing_count` и `evaluation.insufficient_information_count` продолжают строиться как diagnostics/signals и сохраняются в metadata, но текущие правила не используют их как coarse-триггеры для `REJECT`, `SIMPLIFY`, `CLARIFY` или `MENTOR_REVIEW`.
 
 ### Операторы conditions
 
@@ -1331,13 +1361,19 @@ Arbiter поддерживает операторы:
 
 ```text
 AIContext
-└── completeness_result
-    └── missing_information
+├── completeness_result
+│   ├── missing_information
+│   ├── clarification_information
+│   └── optional_missing_information
+├── arbitration_result.final_status
+└── criteria.yaml required_fields.customer_field_role
           │
           ▼
 TemplateQuestionGeneratorStage.generate()
           │
-          ├── для каждого missing item
+          ├── выбирает blocking gaps для CLARIFY
+          ├── выбирает optional gaps для ACCEPT_WITH_CLARIFICATIONS
+          ├── отбрасывает поля с customer_field_role: internal
           ├── взять template по item.field_key
           └── создать ClarificationQuestion
           │
@@ -1354,6 +1390,8 @@ AIContext.with_clarification_result()
 
 `Path` нужен для пути к файлу шаблонов.
 
+`CriteriaConfig`, `CriteriaLoader`, `get_criteria_config` связывают stage с `criteria.yaml`, чтобы роль поля бралась из того же источника, что и в `CompletenessCheckStage`.
+
 `CompletenessResult`, `ClarificationQuestion`, `QuestionGenerationResult` - модели входа и результата.
 
 `AssessmentRecommendation` добавляется только в summary, если assessment result есть.
@@ -1362,11 +1400,11 @@ AIContext.with_clarification_result()
 
 ### Что это
 
-Детерминированный stage, который превращает missing fields в вопросы.
+Детерминированный stage, который превращает customer-facing gaps в вопросы.
 
 ### Зачем он нужен
 
-Вопросы по отсутствующим обязательным полям лучше держать стабильными и редактируемыми в конфиге. Если missing field `project_goal`, вопрос всегда один и тот же: "Какую основную цель должен решить проект...".
+Вопросы по отсутствующим или неопределённым customer-facing полям лучше держать стабильными и редактируемыми в конфиге. Если missing field `project_goal`, вопрос всегда один и тот же: "Какую основную цель должен решить проект...".
 
 ### Что получает
 
@@ -1375,13 +1413,16 @@ AIContext.with_clarification_result()
 ### Что делает
 
 1. Загружает templates из JSON.
-2. Идёт по `completeness_result.missing_information`.
-3. Для каждого missing field ищет шаблон по `field_key`.
-4. Если шаблон есть, создаёт `ClarificationQuestion`.
-5. Если шаблона нет, записывает field key в `missing_template_fields`.
-6. Возвращает `QuestionGenerationResult`.
+2. Загружает `CriteriaConfig` и строит карту `field_key -> customer_field_role`.
+3. Если финальный статус `CLARIFY`, берёт blocking `missing_information` и `clarification_information`.
+4. Если финальный статус `ACCEPT_WITH_CLARIFICATIONS`, берёт `optional_missing_information`.
+5. Отбрасывает поля с ролью `internal`.
+6. Для каждого оставшегося поля ищет шаблон по `field_key`.
+7. Если шаблон есть, создаёт `ClarificationQuestion`.
+8. Если шаблона нет, записывает field key в `missing_template_fields`.
+9. Возвращает `QuestionGenerationResult`.
 
-Этот stage генерирует вопросы только для `missing_information`, а не для `clarification_information`.
+Этот stage не хранит отдельный список внутренних полей. Например, если поле стало `customer_field_role: internal` в `criteria.yaml`, оно не создаёт вопрос даже при наличии шаблона.
 
 ### Что возвращает
 
@@ -1519,6 +1560,7 @@ ResponseWriterStage.write_context()
           │   ├── CLARIFY -> _clarify_response()
           │   ├── SIMPLIFY -> _simplify_response()
           │   ├── MENTOR_REVIEW -> _mentor_review_response()
+          │   ├── ACCEPT_WITH_CLARIFICATIONS -> _accept_with_clarifications_response()
           │   └── REJECT -> _reject_response()
           │
           ├── context.with_final_response(text)
@@ -1553,6 +1595,7 @@ BriefAnalysisResult
 - `CLARIFY` -> список уточняющих вопросов;
 - `SIMPLIFY` -> MVP-предложение и optional questions;
 - `MENTOR_REVIEW` -> сообщение о необходимости экспертизы наставника;
+- `ACCEPT_WITH_CLARIFICATIONS` -> принятие проекта с необязательными уточнениями;
 - `REJECT` -> объяснение, что проект не подходит в текущем виде.
 
 Если статус неизвестен, выбрасывается `ResponseWriterError`.
@@ -1783,6 +1826,7 @@ ExtractionResult
 CompletenessResult
     ├── present_information
     ├── missing_information
+    ├── optional_missing_information
     └── clarification_information
     ↓
 AssessmentResult

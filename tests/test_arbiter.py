@@ -73,6 +73,7 @@ def write_criteria_yaml(path: Path) -> None:
                   title: Project goal
                   description: Required goal.
                   required: true
+                  customer_field_role: blocking
               decision_thresholds:
                 - min_score: 0
                   max_score: 1
@@ -107,6 +108,30 @@ def write_criteria_yaml(path: Path) -> None:
                       - placeholder
                     evidence_hints:
                       - placeholder
+                  - key: scope_too_large
+                    title: Scope too large
+                    description: Project scope is too large for a student MVP.
+                    severity_hint: high
+                    signals:
+                      - broad_scope
+                    evidence_hints:
+                      - full platform
+                  - key: mentor_expertise_required
+                    title: Mentor expertise required
+                    description: Project needs mentor review.
+                    severity_hint: medium
+                    signals:
+                      - specialized_expertise
+                    evidence_hints:
+                      - expert review needed
+                  - key: production_criticality
+                    title: Production criticality
+                    description: Project has production-critical responsibility.
+                    severity_hint: critical
+                    signals:
+                      - production_critical
+                    evidence_hints:
+                      - production responsibility
                 decision_thresholds:
                   - min_score: 0
                     max_score: 1
@@ -118,9 +143,9 @@ def write_criteria_yaml(path: Path) -> None:
                 description: Test deterministic arbitration rules.
                 default_status: MENTOR_REVIEW
                 rules:
-                  - key: reject_restricted_topic
-                    title: Reject restricted topic
-                    description: Reject when the subject is on the restricted list.
+                  - key: reject_by_business_risk
+                    title: Reject by business risk
+                    description: Reject when the brief has a concrete risk type that the Masterskaya does not accept.
                     status: REJECT
                     confidence: 1.0
                     conditions:
@@ -128,78 +153,89 @@ def write_criteria_yaml(path: Path) -> None:
                         operator: any_in
                         value:
                           - restricted_topic
-                  - key: reject_out_of_scope
-                    title: Reject out of scope request
-                    description: Reject when the request does not fit the format.
-                    status: REJECT
-                    confidence: 1.0
+                          - out_of_scope_request
+                          - production_criticality
+                  - key: clarify_blocking_missing_information
+                    title: Clarify blocking missing information
+                    description: Ask for clarification when blocking customer-facing information is missing.
+                    status: CLARIFY
+                    confidence: 0.85
+                    conditions:
+                      - field: completeness.blocking_missing_count
+                        operator: gt
+                        value: 0
+                  - key: clarify_blocking_uncertainty
+                    title: Clarify blocking uncertainty
+                    description: Ask for clarification when blocking customer-facing information is uncertain.
+                    status: CLARIFY
+                    confidence: 0.85
+                    conditions:
+                      - field: completeness.blocking_clarification_count
+                        operator: gt
+                        value: 0
+                  - key: simplify_scope_too_large
+                    title: Simplify scope too large
+                    description: Simplify when the project scope is too large for a student MVP.
+                    status: SIMPLIFY
+                    confidence: 0.9
                     conditions:
                       - field: risk.types
                         operator: any_in
                         value:
-                          - out_of_scope_request
-                  - key: reject_critical_risk
-                    title: Reject critical risk
-                    description: Reject when a critical risk is present.
-                    status: REJECT
-                    confidence: 1.0
-                    conditions:
-                      - field: risk.max_severity
-                        operator: in
-                        value:
-                          - critical
-                  - key: simplify_high_risk
-                    title: Simplify high risk
-                    description: Simplify when high risk is present.
-                    status: SIMPLIFY
-                    confidence: 0.9
-                    conditions:
-                      - field: risk.max_severity
-                        operator: in
-                        value:
-                          - high
-                  - key: clarify_missing_information
-                    title: Clarify missing information
-                    description: Clarify when required information is missing.
-                    status: CLARIFY
-                    confidence: 0.85
-                    conditions:
-                      - field: completeness.missing_count
-                        operator: gt
-                        value: 0
-                  - key: mentor_review_insufficient_information
-                    title: Mentor review for uncertainty
-                    description: Escalate when evaluation remains uncertain.
+                          - scope_too_large
+                  - key: mentor_review_expertise_required
+                    title: Mentor review expertise required
+                    description: Send to mentor review when the project requires specialist expertise before launch.
                     status: MENTOR_REVIEW
                     confidence: 0.8
                     conditions:
-                      - field: evaluation.insufficient_information_count
+                      - field: risk.types
+                        operator: any_in
+                        value:
+                          - mentor_expertise_required
+                  - key: mentor_review_unknown_risk_type
+                    title: Mentor review unknown risk type
+                    description: Send to mentor review when assessment returns a risk type absent from configured risk taxonomy.
+                    status: MENTOR_REVIEW
+                    confidence: 0.75
+                    conditions:
+                      - field: risk.unknown_type_count
                         operator: gt
                         value: 0
-                      - field: completeness.missing_count
-                        operator: eq
+                  - key: accept_with_missing_optional_information
+                    title: Accept with missing optional information
+                    description: Accept the brief while asking for optional customer-facing information that is missing.
+                    status: ACCEPT_WITH_CLARIFICATIONS
+                    confidence: 0.9
+                    conditions:
+                      - field: completeness.optional_missing_count
+                        operator: gt
+                        value: 0
+                  - key: accept_with_optional_uncertainty
+                    title: Accept with optional uncertainty
+                    description: Accept the brief while asking for optional customer-facing information that is uncertain.
+                    status: ACCEPT_WITH_CLARIFICATIONS
+                    confidence: 0.9
+                    conditions:
+                      - field: completeness.optional_clarification_count
+                        operator: gt
                         value: 0
                   - key: accept_ready
                     title: Accept ready brief
-                    description: Accept when the brief is complete and clean.
+                    description: Accept when no higher-priority rule matched and no customer-facing clarification remains.
                     status: ACCEPT
                     confidence: 0.95
                     conditions:
-                      - field: completeness.is_complete
-                        operator: eq
-                        value: true
-                      - field: risk.max_severity
-                        operator: in
-                        value:
-                          - none
-                          - low
-                      - field: evaluation.not_met_count
+                      - field: completeness.blocking_missing_count
                         operator: eq
                         value: 0
-                      - field: evaluation.insufficient_information_count
+                      - field: completeness.blocking_clarification_count
                         operator: eq
                         value: 0
-                      - field: evaluation.risk_detected_count
+                      - field: completeness.optional_missing_count
+                        operator: eq
+                        value: 0
+                      - field: completeness.optional_clarification_count
                         operator: eq
                         value: 0
             """
@@ -229,6 +265,8 @@ def make_completeness_result(
     complete: bool,
     missing: int = 0,
     clarification: int = 0,
+    optional_missing: int = 0,
+    optional_clarification: int = 0,
 ) -> CompletenessResult:
     """Выполняет шаг «make completeness result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     missing_information = [
@@ -255,6 +293,29 @@ def make_completeness_result(
         )
         for index in range(clarification)
     ]
+    optional_missing_information = [
+        CompletenessItem(
+            field_key=f"optional_missing_{index}",
+            field_path="materials",
+            title=f"Optional missing {index}",
+            status=CompletenessStatus.missing,
+            value=None,
+            reason="Optional information is missing",
+            notes=None,
+        )
+        for index in range(optional_missing)
+    ] + [
+        CompletenessItem(
+            field_key=f"optional_clarify_{index}",
+            field_path="materials",
+            title=f"Optional clarify {index}",
+            status=CompletenessStatus.clarification,
+            value=None,
+            reason="Optional information needs clarification",
+            notes=None,
+        )
+        for index in range(optional_clarification)
+    ]
     present_information = [
         CompletenessItem(
             field_key="project_goal",
@@ -269,6 +330,8 @@ def make_completeness_result(
     return CompletenessResult(
         is_complete=complete,
         missing_information=missing_information,
+        critical_missing_information=missing_information,
+        optional_missing_information=optional_missing_information,
         present_information=present_information if complete else present_information,
         clarification_information=clarification_information,
         warnings=[],
@@ -354,7 +417,7 @@ class TestDeterministicArbiterStage(unittest.TestCase):
         )
 
         self.assertEqual(result.final_status, DecisionStatus.accept)
-        self.assertTrue(result.evidence)
+        self.assertEqual(result.triggered_rules[0].rule_key, "accept_ready")
 
     def test_arbitration_diagnostics_are_written_to_stderr(self) -> None:
         stdout = io.StringIO()
@@ -373,17 +436,57 @@ class TestDeterministicArbiterStage(unittest.TestCase):
         self.assertNotIn("[ARBITRATION DIAGNOSTICS]", stdout.getvalue())
         self.assertIn("[ARBITRATION DIAGNOSTICS]", stderr.getvalue())
 
-    def test_reject_status_for_critical_risk(self) -> None:
+    def test_rule_order_matches_decision_priority(self) -> None:
+        self.assertEqual(
+            [rule.key for rule in self.arbiter._arbitration.rules],
+            [
+                "reject_by_business_risk",
+                "clarify_blocking_missing_information",
+                "clarify_blocking_uncertainty",
+                "simplify_scope_too_large",
+                "mentor_review_expertise_required",
+                "mentor_review_unknown_risk_type",
+                "accept_with_missing_optional_information",
+                "accept_with_optional_uncertainty",
+                "accept_ready",
+            ],
+        )
+
+    def test_rules_do_not_use_old_coarse_business_signals(self) -> None:
+        rule_fields = [
+            condition.field
+            for rule in self.arbiter._arbitration.rules
+            for condition in rule.conditions
+        ]
+
+        self.assertNotIn("completeness.missing_count", rule_fields)
+        self.assertNotIn("risk.max_severity", rule_fields)
+        self.assertNotIn("evaluation.insufficient_information_count", rule_fields)
+
+    def test_accept_status_returns_accept_ready(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[],
+                statuses=[CriterionEvaluationStatus.met],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.accept)
+        self.assertEqual(result.triggered_rules[0].rule_key, "accept_ready")
+
+    def test_reject_status_for_production_criticality(self) -> None:
         result = self.arbiter.arbitrate_assessment(
             make_completeness_result(complete=True),
             make_assessment_result(
                 severities=[RiskSeverity.critical],
                 statuses=[CriterionEvaluationStatus.met],
+                risk_types=["production_criticality"],
             ),
         )
 
         self.assertEqual(result.final_status, DecisionStatus.reject)
-        self.assertEqual(result.triggered_rules[0].rule_key, "reject_critical_risk")
+        self.assertEqual(result.triggered_rules[0].rule_key, "reject_by_business_risk")
 
     def test_reject_status_for_out_of_scope_request(self) -> None:
         result = self.arbiter.arbitrate_assessment(
@@ -396,7 +499,7 @@ class TestDeterministicArbiterStage(unittest.TestCase):
         )
 
         self.assertEqual(result.final_status, DecisionStatus.reject)
-        self.assertEqual(result.triggered_rules[0].rule_key, "reject_out_of_scope")
+        self.assertEqual(result.triggered_rules[0].rule_key, "reject_by_business_risk")
         self.assertEqual(
             result.evidence,
             ["out_of_scope_request: critical risk"],
@@ -415,7 +518,7 @@ class TestDeterministicArbiterStage(unittest.TestCase):
         )
 
         self.assertEqual(result.final_status, DecisionStatus.reject)
-        self.assertEqual(result.triggered_rules[0].rule_key, "reject_out_of_scope")
+        self.assertEqual(result.triggered_rules[0].rule_key, "reject_by_business_risk")
 
     def test_reject_status_for_restricted_topic(self) -> None:
         result = self.arbiter.arbitrate_assessment(
@@ -429,7 +532,7 @@ class TestDeterministicArbiterStage(unittest.TestCase):
 
         self.assertEqual(result.final_status, DecisionStatus.reject)
         self.assertEqual(
-            result.triggered_rules[0].rule_key, "reject_restricted_topic"
+            result.triggered_rules[0].rule_key, "reject_by_business_risk"
         )
 
     def test_restricted_topic_outranks_generic_critical_risk(self) -> None:
@@ -445,10 +548,10 @@ class TestDeterministicArbiterStage(unittest.TestCase):
         )
 
         self.assertEqual(
-            result.triggered_rules[0].rule_key, "reject_restricted_topic"
+            result.triggered_rules[0].rule_key, "reject_by_business_risk"
         )
 
-    def test_other_risk_types_keep_severity_based_status(self) -> None:
+    def test_scope_too_large_is_simplify(self) -> None:
         result = self.arbiter.arbitrate_assessment(
             make_completeness_result(complete=True),
             make_assessment_result(
@@ -459,7 +562,214 @@ class TestDeterministicArbiterStage(unittest.TestCase):
         )
 
         self.assertEqual(result.final_status, DecisionStatus.simplify)
-        self.assertEqual(result.triggered_rules[0].rule_key, "simplify_high_risk")
+        self.assertEqual(result.triggered_rules[0].rule_key, "simplify_scope_too_large")
+
+    def test_mentor_expertise_required_is_mentor_review(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.medium],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["mentor_expertise_required"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.mentor_review)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "mentor_review_expertise_required",
+        )
+
+    def test_unknown_high_risk_type_is_mentor_review_fallback(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.high],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["unknown_delivery_risk"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.mentor_review)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "mentor_review_unknown_risk_type",
+        )
+        self.assertEqual(result.metadata["signals"]["risk.unknown_type_count"], 1)
+
+    def test_unknown_critical_risk_type_is_mentor_review_fallback(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.critical],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["unknown_critical_risk"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.mentor_review)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "mentor_review_unknown_risk_type",
+        )
+        self.assertEqual(result.metadata["signals"]["risk.unknown_type_count"], 1)
+
+    def test_unknown_type_signals_include_only_types_absent_from_taxonomy(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[
+                    RiskSeverity.high,
+                    RiskSeverity.medium,
+                    RiskSeverity.critical,
+                ],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=[
+                    "unknown_delivery_risk",
+                    "mentor_expertise_required",
+                    "production_criticality",
+                ],
+            ),
+        )
+
+        self.assertEqual(
+            result.metadata["signals"]["risk.unknown_types"],
+            ["unknown_delivery_risk"],
+        )
+        self.assertEqual(result.metadata["signals"]["risk.unknown_type_count"], 1)
+
+    def test_unknown_risk_type_does_not_outrank_blocking_gap(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=False, missing=1),
+            make_assessment_result(
+                severities=[RiskSeverity.high],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["unknown_delivery_risk"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.clarify)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "clarify_blocking_missing_information",
+        )
+        self.assertEqual(result.metadata["signals"]["risk.unknown_type_count"], 1)
+
+    def test_unknown_risk_type_does_not_outrank_scope_too_large(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.high, RiskSeverity.medium],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["unknown_delivery_risk", "scope_too_large"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.simplify)
+        self.assertEqual(result.triggered_rules[0].rule_key, "simplify_scope_too_large")
+        self.assertEqual(result.metadata["signals"]["risk.unknown_type_count"], 1)
+
+    def test_unknown_risk_type_outranks_optional_gap(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True, optional_missing=1),
+            make_assessment_result(
+                severities=[RiskSeverity.high],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["unknown_delivery_risk"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.mentor_review)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "mentor_review_unknown_risk_type",
+        )
+        self.assertEqual(result.metadata["signals"]["risk.unknown_type_count"], 1)
+
+    def test_unknown_risk_type_outranks_optional_uncertainty(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True, optional_clarification=1),
+            make_assessment_result(
+                severities=[RiskSeverity.high],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["unknown_delivery_risk"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.mentor_review)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "mentor_review_unknown_risk_type",
+        )
+        self.assertEqual(result.metadata["signals"]["risk.unknown_type_count"], 1)
+
+    def test_unknown_low_risk_type_is_mentor_review(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.low],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["unknown_low_risk"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.mentor_review)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "mentor_review_unknown_risk_type",
+        )
+
+    def test_unknown_medium_risk_type_is_mentor_review(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.medium],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["unknown_medium_risk"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.mentor_review)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "mentor_review_unknown_risk_type",
+        )
+
+    def test_optional_missing_information_is_accept_with_clarifications(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True, optional_missing=1),
+            make_assessment_result(
+                severities=[],
+                statuses=[CriterionEvaluationStatus.met],
+            ),
+        )
+
+        self.assertEqual(
+            result.final_status,
+            DecisionStatus.accept_with_clarifications,
+        )
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "accept_with_missing_optional_information",
+        )
+
+    def test_optional_uncertainty_is_accept_with_clarifications(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True, optional_clarification=1),
+            make_assessment_result(
+                severities=[],
+                statuses=[CriterionEvaluationStatus.met],
+            ),
+        )
+
+        self.assertEqual(
+            result.final_status,
+            DecisionStatus.accept_with_clarifications,
+        )
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "accept_with_optional_uncertainty",
+        )
 
     def test_reasons_hold_only_rule_description(self) -> None:
         result = self.arbiter.arbitrate_assessment(
@@ -467,12 +777,16 @@ class TestDeterministicArbiterStage(unittest.TestCase):
             make_assessment_result(
                 severities=[RiskSeverity.critical],
                 statuses=[CriterionEvaluationStatus.met],
+                risk_types=["production_criticality"],
             ),
         )
 
         self.assertEqual(
             result.reasons,
-            ["Reject when a critical risk is present."],
+            [
+                "Reject when the brief has a concrete risk type that "
+                "the Masterskaya does not accept."
+            ],
         )
 
     def test_rule_hit_keeps_conditions_and_signals(self) -> None:
@@ -483,13 +797,60 @@ class TestDeterministicArbiterStage(unittest.TestCase):
             make_assessment_result(
                 severities=[RiskSeverity.critical],
                 statuses=[CriterionEvaluationStatus.met],
+                risk_types=["production_criticality"],
             ),
         )
 
         hit = result.triggered_rules[0]
-        self.assertEqual(hit.conditions, ["risk.max_severity in ['critical']"])
-        self.assertEqual(hit.metadata["signals"], {"risk.max_severity": "critical"})
+        self.assertEqual(
+            hit.conditions,
+            [
+                "risk.types any_in "
+                "['restricted_topic', 'out_of_scope_request', "
+                "'production_criticality']"
+            ],
+        )
+        self.assertEqual(
+            hit.metadata["signals"],
+            {"risk.types": ["production_criticality"]},
+        )
         self.assertEqual(result.metadata["signals"]["risk.max_severity"], "critical")
+
+    def test_completeness_role_signals_are_available(self) -> None:
+        completeness_result = make_completeness_result(
+            complete=False,
+            missing=2,
+            clarification=1,
+            optional_missing=3,
+            optional_clarification=4,
+        )
+
+        signals = self.arbiter._build_signals(
+            completeness_result=completeness_result,
+            risks=[],
+            criterion_evaluations=[],
+        )
+
+        self.assertEqual(signals["completeness.blocking_missing_count"], 2)
+        self.assertEqual(signals["completeness.blocking_clarification_count"], 1)
+        self.assertEqual(signals["completeness.optional_missing_count"], 3)
+        self.assertEqual(signals["completeness.optional_clarification_count"], 4)
+        self.assertIn(
+            "completeness.blocking_missing_count",
+            self.arbiter._supported_signals,
+        )
+        self.assertIn(
+            "completeness.blocking_clarification_count",
+            self.arbiter._supported_signals,
+        )
+        self.assertIn(
+            "completeness.optional_missing_count",
+            self.arbiter._supported_signals,
+        )
+        self.assertIn(
+            "completeness.optional_clarification_count",
+            self.arbiter._supported_signals,
+        )
 
     def test_clarify_status_for_missing_information(self) -> None:
         result = self.arbiter.arbitrate_assessment(
@@ -503,35 +864,48 @@ class TestDeterministicArbiterStage(unittest.TestCase):
         self.assertEqual(result.final_status, DecisionStatus.clarify)
         self.assertEqual(
             result.triggered_rules[0].rule_key,
-            "clarify_missing_information",
+            "clarify_blocking_missing_information",
         )
 
-    def test_simplify_status_for_high_risk(self) -> None:
+    def test_clarify_status_for_blocking_clarification(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=False, clarification=1),
+            make_assessment_result(
+                severities=[],
+                statuses=[CriterionEvaluationStatus.met],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.clarify)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "clarify_blocking_uncertainty",
+        )
+
+    def test_high_severity_without_scope_type_does_not_simplify(self) -> None:
         result = self.arbiter.arbitrate_assessment(
             make_completeness_result(complete=True),
             make_assessment_result(
                 severities=[RiskSeverity.high],
                 statuses=[CriterionEvaluationStatus.met],
+                risk_types=["placeholder_risk"],
             ),
         )
 
-        self.assertEqual(result.final_status, DecisionStatus.simplify)
-        self.assertEqual(result.triggered_rules[0].rule_key, "simplify_high_risk")
+        self.assertEqual(result.final_status, DecisionStatus.accept)
+        self.assertEqual(result.triggered_rules[0].rule_key, "accept_ready")
 
-    def test_mentor_review_status_for_insufficient_information(self) -> None:
+    def test_insufficient_information_evaluation_does_not_force_mentor_review(self) -> None:
         result = self.arbiter.arbitrate_assessment(
             make_completeness_result(complete=True),
             make_assessment_result(
-                severities=[RiskSeverity.low],
+                severities=[],
                 statuses=[CriterionEvaluationStatus.insufficient_information],
             ),
         )
 
-        self.assertEqual(result.final_status, DecisionStatus.mentor_review)
-        self.assertEqual(
-            result.triggered_rules[0].rule_key,
-            "mentor_review_insufficient_information",
-        )
+        self.assertEqual(result.final_status, DecisionStatus.accept)
+        self.assertEqual(result.triggered_rules[0].rule_key, "accept_ready")
 
     def test_stage_decision_branches_from_assessment_result_context(self) -> None:
         scenarios = [
@@ -539,7 +913,11 @@ class TestDeterministicArbiterStage(unittest.TestCase):
                 "name": "accept",
                 "complete": True,
                 "missing": 0,
+                "clarification": 0,
+                "optional_missing": 0,
+                "optional_clarification": 0,
                 "severities": [],
+                "risk_types": None,
                 "statuses": [CriterionEvaluationStatus.met],
                 "expected_status": DecisionStatus.accept,
                 "expected_rule": "accept_ready",
@@ -548,37 +926,66 @@ class TestDeterministicArbiterStage(unittest.TestCase):
                 "name": "clarify",
                 "complete": False,
                 "missing": 1,
+                "clarification": 0,
+                "optional_missing": 0,
+                "optional_clarification": 0,
                 "severities": [],
+                "risk_types": None,
                 "statuses": [CriterionEvaluationStatus.met],
                 "expected_status": DecisionStatus.clarify,
-                "expected_rule": "clarify_missing_information",
+                "expected_rule": "clarify_blocking_missing_information",
             },
             {
                 "name": "simplify",
                 "complete": True,
                 "missing": 0,
+                "clarification": 0,
+                "optional_missing": 0,
+                "optional_clarification": 0,
                 "severities": [RiskSeverity.high],
+                "risk_types": ["scope_too_large"],
                 "statuses": [CriterionEvaluationStatus.met],
                 "expected_status": DecisionStatus.simplify,
-                "expected_rule": "simplify_high_risk",
+                "expected_rule": "simplify_scope_too_large",
             },
             {
                 "name": "mentor_review",
                 "complete": True,
                 "missing": 0,
-                "severities": [RiskSeverity.low],
-                "statuses": [CriterionEvaluationStatus.insufficient_information],
+                "clarification": 0,
+                "optional_missing": 0,
+                "optional_clarification": 0,
+                "severities": [RiskSeverity.medium],
+                "risk_types": ["mentor_expertise_required"],
+                "statuses": [CriterionEvaluationStatus.met],
                 "expected_status": DecisionStatus.mentor_review,
-                "expected_rule": "mentor_review_insufficient_information",
+                "expected_rule": "mentor_review_expertise_required",
+            },
+            {
+                "name": "accept_with_clarifications",
+                "complete": True,
+                "missing": 0,
+                "clarification": 0,
+                "optional_missing": 1,
+                "optional_clarification": 0,
+                "severities": [],
+                "risk_types": None,
+                "statuses": [CriterionEvaluationStatus.met],
+                "expected_status": DecisionStatus.accept_with_clarifications,
+                "expected_rule": "accept_with_missing_optional_information",
             },
             {
                 "name": "reject",
                 "complete": True,
                 "missing": 0,
+                "clarification": 0,
+                "optional_missing": 0,
+                "optional_clarification": 0,
                 "severities": [RiskSeverity.critical],
+                "risk_types": ["production_criticality"],
                 "statuses": [CriterionEvaluationStatus.met],
                 "expected_status": DecisionStatus.reject,
-                "expected_rule": "reject_critical_risk",
+                "expected_rule": "reject_by_business_risk",
             },
         ]
 
@@ -592,12 +999,18 @@ class TestDeterministicArbiterStage(unittest.TestCase):
                         make_completeness_result(
                             complete=scenario["complete"],
                             missing=scenario["missing"],
+                            clarification=scenario["clarification"],
+                            optional_missing=scenario["optional_missing"],
+                            optional_clarification=scenario[
+                                "optional_clarification"
+                            ],
                         )
                     )
                     .with_assessment_result(
                         make_assessment_result(
                             severities=scenario["severities"],
                             statuses=scenario["statuses"],
+                            risk_types=scenario["risk_types"],
                         )
                     )
                 )
@@ -615,16 +1028,31 @@ class TestDeterministicArbiterStage(unittest.TestCase):
                     scenario["expected_rule"],
                 )
 
-    def test_critical_risk_wins_over_complete_brief(self) -> None:
+    def test_reject_outranks_clarify_and_simplify(self) -> None:
         result = self.arbiter.arbitrate_assessment(
-            make_completeness_result(complete=True),
+            make_completeness_result(complete=False, missing=1),
             make_assessment_result(
-                severities=[RiskSeverity.critical],
+                severities=[RiskSeverity.critical, RiskSeverity.high],
                 statuses=[CriterionEvaluationStatus.met],
+                risk_types=["production_criticality", "scope_too_large"],
             ),
         )
 
         self.assertEqual(result.final_status, DecisionStatus.reject)
+        self.assertEqual(result.triggered_rules[0].rule_key, "reject_by_business_risk")
+
+    def test_reject_outranks_mentor_review(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[RiskSeverity.critical, RiskSeverity.medium],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["production_criticality", "mentor_expertise_required"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.reject)
+        self.assertEqual(result.triggered_rules[0].rule_key, "reject_by_business_risk")
 
     def test_incomplete_but_acceptable_brief_is_clarify(self) -> None:
         result = self.arbiter.arbitrate_assessment(
@@ -636,6 +1064,64 @@ class TestDeterministicArbiterStage(unittest.TestCase):
         )
 
         self.assertEqual(result.final_status, DecisionStatus.clarify)
+
+    def test_blocking_gap_outranks_mentor_review(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=False, missing=1),
+            make_assessment_result(
+                severities=[RiskSeverity.medium],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["mentor_expertise_required"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.clarify)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "clarify_blocking_missing_information",
+        )
+
+    def test_clarify_outranks_simplify(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=False, clarification=1),
+            make_assessment_result(
+                severities=[RiskSeverity.high],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["scope_too_large"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.clarify)
+        self.assertEqual(result.triggered_rules[0].rule_key, "clarify_blocking_uncertainty")
+
+    def test_simplify_outranks_mentor_review_and_optional_clarifications(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True, optional_missing=1),
+            make_assessment_result(
+                severities=[RiskSeverity.high, RiskSeverity.medium],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["scope_too_large", "mentor_expertise_required"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.simplify)
+        self.assertEqual(result.triggered_rules[0].rule_key, "simplify_scope_too_large")
+
+    def test_mentor_review_outranks_accept_with_clarifications(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True, optional_clarification=1),
+            make_assessment_result(
+                severities=[RiskSeverity.medium],
+                statuses=[CriterionEvaluationStatus.met],
+                risk_types=["mentor_expertise_required"],
+            ),
+        )
+
+        self.assertEqual(result.final_status, DecisionStatus.mentor_review)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "mentor_review_expertise_required",
+        )
 
     def test_reproducible_results(self) -> None:
         completeness_result = make_completeness_result(complete=True)
@@ -654,6 +1140,22 @@ class TestDeterministicArbiterStage(unittest.TestCase):
         )
 
         self.assertEqual(first, second)
+
+    def test_parses_accept_with_clarifications_status_from_configuration(self) -> None:
+        rule = self.arbiter._arbitration.rules[-1].model_copy(
+            update={"status": "ACCEPT_WITH_CLARIFICATIONS"}
+        )
+
+        result = self.arbiter._build_result(
+            rule=rule,
+            signals={"completeness.is_complete": True},
+            evidence_map={},
+        )
+
+        self.assertEqual(
+            result.final_status,
+            DecisionStatus.accept_with_clarifications,
+        )
 
     def test_arbiter_stage_updates_context_via_base_stage(self) -> None:
         stage = DeterministicArbiterStage(criteria_path=self.criteria_path)

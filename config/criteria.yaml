@@ -263,6 +263,7 @@ evaluation:
       title: Project goal
       description: The purpose or problem the project should solve.
       required: true
+      customer_field_role: blocking
       allowed_values:
         - explicit
     - key: expected_result
@@ -270,6 +271,7 @@ evaluation:
       title: Expected result
       description: The product, artefact or measurable output expected by the customer.
       required: true
+      customer_field_role: blocking
       allowed_values:
         - explicit
     - key: tasks
@@ -277,6 +279,7 @@ evaluation:
       title: Key tasks
       description: The main tasks that students are expected to complete.
       required: true
+      customer_field_role: blocking
       allowed_values:
         - explicit
     - key: project_direction
@@ -284,6 +287,7 @@ evaluation:
       title: Project direction
       description: One of development, design, analytics, marketing, ai, education or mixed.
       required: true
+      customer_field_role: internal
       allowed_values:
         - development
         - design
@@ -297,6 +301,7 @@ evaluation:
       title: Available materials
       description: Existing data, mockups, API, content, links or source assets.
       required: false
+      customer_field_role: optional
       allowed_values:
         - explicit
     - key: deadlines
@@ -304,6 +309,7 @@ evaluation:
       title: Deadlines
       description: Deadline or timing constraints if they exist.
       required: false
+      customer_field_role: optional
       allowed_values:
         - explicit
     - key: integrations
@@ -311,6 +317,7 @@ evaluation:
       title: Integrations
       description: External systems or APIs required by the project if they exist.
       required: false
+      customer_field_role: optional
       allowed_values:
         - explicit
   decision_thresholds:
@@ -471,13 +478,9 @@ evaluation:
     description: Deterministic rules for final brief recommendation.
     default_status: MENTOR_REVIEW
     rules:
-      # These two named refusal rules must stay on top: the arbiter takes the first
-      # matching rule, and a lower position would let simplify_high_risk win when
-      # severity is not critical. They also outrank reject_critical_risk, which would
-      # give the same REJECT but a vaguer ground in the trace.
-      - key: reject_restricted_topic
-        title: Reject restricted topic
-        description: Reject when the subject of the project is on the list of topics the Masterskaya does not take.
+      - key: reject_by_business_risk
+        title: Reject by business risk
+        description: Reject when the brief has a concrete risk type that the Masterskaya does not accept.
         status: REJECT
         confidence: 1.0
         conditions:
@@ -485,77 +488,88 @@ evaluation:
             operator: any_in
             value:
               - restricted_topic
-      - key: reject_out_of_scope
-        title: Reject out of scope request
-        description: Reject when the request does not fit the Masterskaya project format.
-        status: REJECT
-        confidence: 1.0
+              - out_of_scope_request
+              - production_criticality
+      - key: clarify_blocking_missing_information
+        title: Clarify blocking missing information
+        description: Ask for clarification when blocking customer-facing information is missing.
+        status: CLARIFY
+        confidence: 0.85
+        conditions:
+          - field: completeness.blocking_missing_count
+            operator: gt
+            value: 0
+      - key: clarify_blocking_uncertainty
+        title: Clarify blocking uncertainty
+        description: Ask for clarification when blocking customer-facing information is uncertain.
+        status: CLARIFY
+        confidence: 0.85
+        conditions:
+          - field: completeness.blocking_clarification_count
+            operator: gt
+            value: 0
+      - key: simplify_scope_too_large
+        title: Simplify scope too large
+        description: Simplify when the project scope is too large for a student MVP.
+        status: SIMPLIFY
+        confidence: 0.9
         conditions:
           - field: risk.types
             operator: any_in
             value:
-              - out_of_scope_request
-      - key: reject_critical_risk
-        title: Reject critical risk
-        description: Reject when a critical student-project risk is present.
-        status: REJECT
-        confidence: 1.0
-        conditions:
-          - field: risk.max_severity
-            operator: in
-            value:
-              - critical
-      - key: simplify_high_risk
-        title: Simplify high scope risk
-        description: Simplify when the project has high scope or feasibility risk.
-        status: SIMPLIFY
-        confidence: 0.9
-        conditions:
-          - field: risk.max_severity
-            operator: in
-            value:
-              - high
-      - key: clarify_missing_information
-        title: Clarify missing information
-        description: Ask for clarification when required information is missing.
-        status: CLARIFY
-        confidence: 0.85
-        conditions:
-          - field: completeness.missing_count
-            operator: gt
-            value: 0
-      - key: mentor_review_insufficient_information
-        title: Mentor review for uncertainty
-        description: Escalate when criteria remain uncertain despite complete extracted fields.
+              - scope_too_large
+      - key: mentor_review_expertise_required
+        title: Mentor review expertise required
+        description: Send to mentor review when the project requires specialist expertise before launch.
         status: MENTOR_REVIEW
         confidence: 0.8
         conditions:
-          - field: evaluation.insufficient_information_count
+          - field: risk.types
+            operator: any_in
+            value:
+              - mentor_expertise_required
+      - key: mentor_review_unknown_risk_type
+        title: Mentor review unknown risk type
+        description: Send to mentor review when assessment returns a risk type absent from configured risk taxonomy.
+        status: MENTOR_REVIEW
+        confidence: 0.75
+        conditions:
+          - field: risk.unknown_type_count
             operator: gt
             value: 0
-          - field: completeness.missing_count
-            operator: eq
+      - key: accept_with_missing_optional_information
+        title: Accept with missing optional information
+        description: Accept the brief while asking for optional customer-facing information that is missing.
+        status: ACCEPT_WITH_CLARIFICATIONS
+        confidence: 0.9
+        conditions:
+          - field: completeness.optional_missing_count
+            operator: gt
+            value: 0
+      - key: accept_with_optional_uncertainty
+        title: Accept with optional uncertainty
+        description: Accept the brief while asking for optional customer-facing information that is uncertain.
+        status: ACCEPT_WITH_CLARIFICATIONS
+        confidence: 0.9
+        conditions:
+          - field: completeness.optional_clarification_count
+            operator: gt
             value: 0
       - key: accept_ready
         title: Accept ready brief
-        description: Accept when the brief is complete, criteria are met and no relevant risks remain.
+        description: Accept when no higher-priority rule matched and no customer-facing clarification remains.
         status: ACCEPT
         confidence: 0.95
         conditions:
-          - field: completeness.is_complete
-            operator: eq
-            value: true
-          - field: risk.max_severity
-            operator: in
-            value:
-              - none
-              - low
-          - field: evaluation.not_met_count
+          - field: completeness.blocking_missing_count
             operator: eq
             value: 0
-          - field: evaluation.insufficient_information_count
+          - field: completeness.blocking_clarification_count
             operator: eq
             value: 0
-          - field: evaluation.risk_detected_count
+          - field: completeness.optional_missing_count
+            operator: eq
+            value: 0
+          - field: completeness.optional_clarification_count
             operator: eq
             value: 0

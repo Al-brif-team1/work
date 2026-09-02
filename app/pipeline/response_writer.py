@@ -104,6 +104,8 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
             return self._simplify_response(context)
         if status is DecisionStatus.mentor_review:
             return self._mentor_review_response(context)
+        if status is DecisionStatus.accept_with_clarifications:
+            return self._accept_with_clarifications_response(context)
         if status is DecisionStatus.reject:
             return self._reject_response(context)
 
@@ -133,6 +135,23 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
             f"{questions}\n\n"
             "После уточнений мы сможем повторно оценить реалистичность проекта, "
             "риски и формат участия студентов."
+        )
+
+    def _accept_with_clarifications_response(self, context: AIContext) -> str:
+        """Выполняет шаг «accept with clarifications response». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        summary = self._summary(context)
+        reasons = self._format_reasons(context)
+        questions = self._format_questions(context)
+        return (
+            "Здравствуйте!\n\n"
+            "Спасибо за бриф. По предварительной оценке проект можно брать "
+            "в работу как студенческий проект, но перед стартом нужно уточнить "
+            "несколько деталей.\n\n"
+            f"Кратко о проекте: {summary}\n\n"
+            f"{reasons}"
+            f"Уточняющие вопросы:\n{questions}\n\n"
+            "Следующий шаг: согласовать состав работ, сроки и формат материалов "
+            "для старта команды."
         )
 
     def _simplify_response(self, context: AIContext) -> str:
@@ -199,7 +218,11 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
 
         accepted = (
             context.arbitration_result is not None
-            and context.arbitration_result.final_status is DecisionStatus.accept
+            and context.arbitration_result.final_status
+            in {
+                DecisionStatus.accept,
+                DecisionStatus.accept_with_clarifications,
+            }
         )
         reported_statuses = (
             self._ACCEPTED_CRITERION_STATUSES

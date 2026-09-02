@@ -24,6 +24,13 @@ class TestCriteriaConfig(unittest.TestCase):
         self.assertEqual(config.evaluation.project_types[0].key, "development")
         self.assertEqual(config.evaluation.criteria[0].key, "request_eligibility")
         self.assertEqual(config.evaluation.required_fields[0].key, "project_goal")
+        field_roles = {
+            field.key: field.customer_field_role
+            for field in config.evaluation.required_fields
+        }
+        self.assertEqual(field_roles["project_goal"], "blocking")
+        self.assertEqual(field_roles["project_direction"], "internal")
+        self.assertEqual(field_roles["materials"], "optional")
 
     def test_eligibility_gate_is_configured(self) -> None:
         config = CriteriaLoader.load()
@@ -34,27 +41,58 @@ class TestCriteriaConfig(unittest.TestCase):
         ]
         rules = config.evaluation.arbitration.rules
         rule_keys = [item.key for item in rules]
-        out_of_scope_rule = rules[rule_keys.index("reject_out_of_scope")]
+        reject_rule = rules[rule_keys.index("reject_by_business_risk")]
 
         self.assertEqual(criteria_keys[0], "request_eligibility")
         self.assertIn("out_of_scope_request", risk_keys)
-        self.assertEqual(out_of_scope_rule.status, "REJECT")
-        self.assertEqual(out_of_scope_rule.conditions[0].field, "risk.types")
-        self.assertEqual(out_of_scope_rule.conditions[0].operator, "any_in")
+        self.assertEqual(reject_rule.status, "REJECT")
+        self.assertEqual(reject_rule.conditions[0].field, "risk.types")
+        self.assertEqual(reject_rule.conditions[0].operator, "any_in")
         self.assertIn(
-            "out_of_scope_request", out_of_scope_rule.conditions[0].value
+            "out_of_scope_request", reject_rule.conditions[0].value
         )
         # Раньше правило проверялось по индексу 0. Гейтов стало два, поэтому позицию
         # сторожим явно: оба отказа должны стоять выше упрощения, иначе на некритической
         # severity их перехватит simplify_high_risk.
         self.assertLess(
-            rule_keys.index("reject_out_of_scope"),
-            rule_keys.index("simplify_high_risk"),
+            rule_keys.index("reject_by_business_risk"),
+            rule_keys.index("simplify_scope_too_large"),
         )
         self.assertLess(
-            rule_keys.index("reject_restricted_topic"),
-            rule_keys.index("simplify_high_risk"),
+            rule_keys.index("clarify_blocking_missing_information"),
+            rule_keys.index("simplify_scope_too_large"),
         )
+
+    def test_unknown_risk_type_fallback_rule_priority_is_configured(self) -> None:
+        config = CriteriaLoader.load()
+
+        rules = config.evaluation.arbitration.rules
+        rule_keys = [item.key for item in rules]
+        unknown_rule = rules[rule_keys.index("mentor_review_unknown_risk_type")]
+
+        self.assertEqual(unknown_rule.status, "MENTOR_REVIEW")
+        self.assertEqual(unknown_rule.conditions[0].field, "risk.unknown_type_count")
+        self.assertEqual(unknown_rule.conditions[0].operator, "gt")
+        self.assertEqual(unknown_rule.conditions[0].value, 0)
+        for higher_priority_rule in [
+            "reject_by_business_risk",
+            "clarify_blocking_missing_information",
+            "clarify_blocking_uncertainty",
+            "simplify_scope_too_large",
+        ]:
+            self.assertLess(
+                rule_keys.index(higher_priority_rule),
+                rule_keys.index("mentor_review_unknown_risk_type"),
+            )
+        for lower_priority_rule in [
+            "accept_with_missing_optional_information",
+            "accept_with_optional_uncertainty",
+            "accept_ready",
+        ]:
+            self.assertLess(
+                rule_keys.index("mentor_review_unknown_risk_type"),
+                rule_keys.index(lower_priority_rule),
+            )
 
     def test_restricted_topics_are_configured(self) -> None:
         config = CriteriaLoader.load()

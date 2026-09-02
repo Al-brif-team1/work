@@ -47,6 +47,7 @@ class CompletenessTechnicalInfo(BaseModel):
     present_count: int = 0
     missing_count: int = 0
     critical_missing_count: int = 0
+    optional_missing_count: int = 0
     clarification_count: int = 0
 
     model_config = ConfigDict(extra="forbid")
@@ -59,6 +60,7 @@ class CompletenessResult(BaseModel):
     level: CompletenessLevel = CompletenessLevel.complete
     missing_information: list[CompletenessItem] = Field(default_factory=list)
     critical_missing_information: list[CompletenessItem] = Field(default_factory=list)
+    optional_missing_information: list[CompletenessItem] = Field(default_factory=list)
     present_information: list[CompletenessItem] = Field(default_factory=list)
     clarification_information: list[CompletenessItem] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

@@ -45,6 +45,9 @@ def make_brief(
     project_direction: ExtractedFact,
     expected_result: ExtractedFact,
     technologies: list[ExtractedFact] | None = None,
+    materials: list[ExtractedFact] | None = None,
+    deadlines: list[ExtractedFact] | None = None,
+    integrations: list[ExtractedFact] | None = None,
 ) -> ExtractedBrief:
     """Выполняет шаг «make brief». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return ExtractedBrief(
@@ -54,12 +57,12 @@ def make_brief(
         project_direction=project_direction,
         technologies=technologies or [],
         stack=[],
-        materials=[],
+        materials=materials or [],
         expected_result=expected_result,
         constraints=[],
-        deadlines=[],
+        deadlines=deadlines or [],
         existing_resources=[],
-        integrations=[],
+        integrations=integrations or [],
         other_facts=[],
     )
 
@@ -100,31 +103,55 @@ def write_criteria_yaml(path: Path, project_type_key: str = "web_app") -> None:
                   title: Project goal
                   description: Required project goal.
                   required: true
+                  customer_field_role: blocking
                 - key: tasks
                   field_path: tasks
                   title: Tasks
                   description: Required tasks.
                   required: true
+                  customer_field_role: blocking
                 - key: project_type
                   field_path: project_type
                   title: Project type
                   description: Required project type.
                   required: true
+                  customer_field_role: blocking
                 - key: project_direction
                   field_path: project_direction
                   title: Project direction
                   description: Required project direction.
                   required: true
+                  customer_field_role: internal
                 - key: expected_result
                   field_path: expected_result
                   title: Expected result
                   description: Required expected result.
                   required: true
+                  customer_field_role: blocking
                 - key: technologies
                   field_path: technologies
                   title: Technologies
                   description: Optional technologies.
                   required: false
+                  customer_field_role: internal
+                - key: materials
+                  field_path: materials
+                  title: Materials
+                  description: Optional materials.
+                  required: false
+                  customer_field_role: optional
+                - key: deadlines
+                  field_path: deadlines
+                  title: Deadlines
+                  description: Optional deadlines.
+                  required: false
+                  customer_field_role: optional
+                - key: integrations
+                  field_path: integrations
+                  title: Integrations
+                  description: Optional integrations.
+                  required: false
+                  customer_field_role: optional
               decision_thresholds:
                 - min_score: 0
                   max_score: 1
@@ -158,6 +185,9 @@ class TestCompletenessCheckStage(unittest.TestCase):
             project_direction=fact("support automation"),
             expected_result=fact("Working support bot"),
             technologies=[fact("Python")],
+            materials=[fact("Support scripts")],
+            deadlines=[fact("Q4")],
+            integrations=[fact("CRM")],
         )
 
         result = checker.check(brief)
@@ -166,10 +196,11 @@ class TestCompletenessCheckStage(unittest.TestCase):
         self.assertEqual(result.level, CompletenessLevel.complete)
         self.assertEqual(len(result.missing_information), 0)
         self.assertEqual(len(result.critical_missing_information), 0)
+        self.assertEqual(len(result.optional_missing_information), 0)
         self.assertEqual(len(result.clarification_information), 0)
         self.assertGreaterEqual(len(result.present_information), 5)
         self.assertEqual(result.technical_info.required_fields_count, 5)
-        self.assertEqual(result.technical_info.optional_fields_count, 1)
+        self.assertEqual(result.technical_info.optional_fields_count, 4)
 
     def test_missing_goal_is_reported(self) -> None:
         checker = CompletenessCheckStage(criteria_path=self.criteria_path)
@@ -213,7 +244,29 @@ class TestCompletenessCheckStage(unittest.TestCase):
         self.assertEqual(len(result.missing_information), 1)
         self.assertEqual(result.missing_information[0].field_key, "tasks")
 
-    def test_only_optional_fields_missing_keeps_brief_complete(self) -> None:
+    def test_non_customer_optional_fields_missing_are_ignored(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        brief = make_brief(
+            project_goal=fact("Build a support bot"),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("support automation"),
+            expected_result=fact("Working support bot"),
+            technologies=[],
+            materials=[fact("Support scripts")],
+            deadlines=[fact("Q4")],
+            integrations=[fact("CRM")],
+        )
+
+        result = checker.check(brief)
+
+        self.assertTrue(result.is_complete)
+        self.assertEqual(result.level, CompletenessLevel.complete)
+        self.assertEqual(result.missing_information, [])
+        self.assertEqual(result.critical_missing_information, [])
+        self.assertEqual(result.optional_missing_information, [])
+
+    def test_missing_optional_customer_fields_are_preserved_without_blocking(self) -> None:
         checker = CompletenessCheckStage(criteria_path=self.criteria_path)
         brief = make_brief(
             project_goal=fact("Build a support bot"),
@@ -230,6 +283,11 @@ class TestCompletenessCheckStage(unittest.TestCase):
         self.assertEqual(result.level, CompletenessLevel.complete)
         self.assertEqual(result.missing_information, [])
         self.assertEqual(result.critical_missing_information, [])
+        self.assertEqual(
+            {item.field_key for item in result.optional_missing_information},
+            {"materials", "deadlines", "integrations"},
+        )
+        self.assertEqual(result.technical_info.optional_missing_count, 3)
 
     def test_multiple_missing_fields_are_reported(self) -> None:
         checker = CompletenessCheckStage(criteria_path=self.criteria_path)
@@ -246,12 +304,78 @@ class TestCompletenessCheckStage(unittest.TestCase):
         self.assertFalse(result.is_complete)
         self.assertEqual(
             {item.field_key for item in result.missing_information},
-            {"project_goal", "tasks", "project_direction", "expected_result"},
+            {"project_goal", "tasks", "expected_result"},
         )
         self.assertEqual(
             {item.field_key for item in result.critical_missing_information},
-            {"project_goal", "tasks", "project_direction", "expected_result"},
+            {"project_goal", "tasks", "expected_result"},
         )
+
+    def test_missing_project_direction_is_not_customer_facing_missing(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        brief = make_brief(
+            project_goal=fact("Build a support bot"),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact(None, status=FactStatus.missing),
+            expected_result=fact("Working support bot"),
+            materials=[fact("Support scripts")],
+            deadlines=[fact("Q4")],
+            integrations=[fact("CRM")],
+        )
+
+        result = checker.check(brief)
+
+        self.assertTrue(result.is_complete)
+        self.assertEqual(result.missing_information, [])
+        self.assertEqual(result.critical_missing_information, [])
+        self.assertEqual(result.optional_missing_information, [])
+
+    def test_uncertain_optional_customer_field_is_preserved_without_blocking(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        brief = make_brief(
+            project_goal=fact("Build a support bot"),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("support automation"),
+            expected_result=fact("Working support bot"),
+            materials=[fact("Customer may provide scripts", FactStatus.uncertain)],
+            deadlines=[fact("Q4")],
+            integrations=[fact("CRM")],
+        )
+
+        result = checker.check(brief)
+
+        self.assertTrue(result.is_complete)
+        self.assertEqual(result.level, CompletenessLevel.complete)
+        self.assertEqual(result.missing_information, [])
+        self.assertEqual(result.clarification_information, [])
+        self.assertEqual(len(result.optional_missing_information), 1)
+        self.assertEqual(result.optional_missing_information[0].field_key, "materials")
+        self.assertEqual(
+            result.optional_missing_information[0].status,
+            CompletenessStatus.clarification,
+        )
+
+    def test_uncertain_internal_field_is_not_customer_facing_clarification(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        brief = make_brief(
+            project_goal=fact("Build a support bot"),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("support automation", FactStatus.uncertain),
+            expected_result=fact("Working support bot"),
+            materials=[fact("Support scripts")],
+            deadlines=[fact("Q4")],
+            integrations=[fact("CRM")],
+        )
+
+        result = checker.check(brief)
+
+        self.assertTrue(result.is_complete)
+        self.assertEqual(result.missing_information, [])
+        self.assertEqual(result.optional_missing_information, [])
+        self.assertEqual(result.clarification_information, [])
 
     def test_unknown_project_type_requires_clarification(self) -> None:
         checker = CompletenessCheckStage(criteria_path=self.criteria_path)
@@ -285,7 +409,7 @@ class TestCompletenessCheckStage(unittest.TestCase):
 
         self.assertFalse(result.is_complete)
         self.assertEqual(result.level, CompletenessLevel.incomplete)
-        self.assertEqual(result.technical_info.critical_missing_count, 5)
+        self.assertEqual(result.technical_info.critical_missing_count, 4)
 
     def test_stage_uses_base_stage_lifecycle_and_updates_context(self) -> None:
         stage = CompletenessCheckStage(criteria_path=self.criteria_path)
@@ -370,6 +494,7 @@ class TestCompletenessCheckStage(unittest.TestCase):
                       title: Project goal
                       description: Invalid field path.
                       required: true
+                      customer_field_role: blocking
                   decision_thresholds:
                     - min_score: 0
                       max_score: 1

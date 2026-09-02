@@ -22,6 +22,7 @@ from app.schemas import (
     ArbitrationRuleHit,
     AssessmentResult,
     CompletenessResult,
+    CompletenessStatus,
     CriterionEvaluation,
     CriterionEvaluationStatus,
     DecisionStatus,
@@ -79,6 +80,10 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
 
         self._config = config
         self._arbitration = arbitration
+        self._known_risk_types = {
+            risk_type.key
+            for risk_type in self._config.evaluation.risk_analysis.risk_types
+        }
         self._supported_signals = self._build_supported_signals()
         self._validate_config()
 
@@ -265,11 +270,23 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         actuals = {
             "completeness.is_complete": signals.get("completeness.is_complete"),
             "completeness.missing_count": signals.get("completeness.missing_count"),
+            "completeness.blocking_missing_count": signals.get(
+                "completeness.blocking_missing_count"
+            ),
             "completeness.critical_missing_count": len(
                 completeness_result.critical_missing_information
             ),
             "completeness.clarification_count": signals.get(
                 "completeness.clarification_count"
+            ),
+            "completeness.blocking_clarification_count": signals.get(
+                "completeness.blocking_clarification_count"
+            ),
+            "completeness.optional_missing_count": signals.get(
+                "completeness.optional_missing_count"
+            ),
+            "completeness.optional_clarification_count": signals.get(
+                "completeness.optional_clarification_count"
             ),
             "risk.total_count": signals.get("risk.total_count"),
             "risk.max_severity": signals.get("risk.max_severity"),
@@ -278,6 +295,8 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             "risk.high_count": signals.get("risk.high_count"),
             "risk.critical_count": signals.get("risk.critical_count"),
             "risk.types": signals.get("risk.types"),
+            "risk.unknown_type_count": signals.get("risk.unknown_type_count"),
+            "risk.unknown_types": signals.get("risk.unknown_types"),
             "evaluation.total_count": signals.get("evaluation.total_count"),
             "evaluation.met_count": signals.get("evaluation.met_count"),
             "evaluation.not_met_count": signals.get("evaluation.not_met_count"),
@@ -461,12 +480,29 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         risk_counts = self._risk_counts(risks)
         evaluation_counts = self._evaluation_counts(criterion_evaluations)
         completeness_counts = self._completeness_counts(completeness_result)
+        unknown_risk_types = [
+            risk.type
+            for risk in risks
+            if risk.type not in self._known_risk_types
+        ]
 
         signals: dict[str, Any] = {
             "completeness.is_complete": completeness_result.is_complete,
             "completeness.missing_count": completeness_counts["missing_count"],
+            "completeness.blocking_missing_count": completeness_counts[
+                "blocking_missing_count"
+            ],
             "completeness.clarification_count": completeness_counts[
                 "clarification_count"
+            ],
+            "completeness.blocking_clarification_count": completeness_counts[
+                "blocking_clarification_count"
+            ],
+            "completeness.optional_missing_count": completeness_counts[
+                "optional_missing_count"
+            ],
+            "completeness.optional_clarification_count": completeness_counts[
+                "optional_clarification_count"
             ],
             "completeness.present_count": completeness_counts["present_count"],
             "risk.has_risks": bool(risks),
@@ -477,6 +513,8 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             "risk.critical_count": risk_counts["critical_count"],
             "risk.max_severity": risk_counts["max_severity"],
             "risk.types": [risk.type for risk in risks],
+            "risk.unknown_type_count": len(unknown_risk_types),
+            "risk.unknown_types": unknown_risk_types,
             "evaluation.total_count": evaluation_counts["total_count"],
             "evaluation.met_count": evaluation_counts["met_count"],
             "evaluation.not_met_count": evaluation_counts["not_met_count"],
@@ -504,9 +542,27 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
                 f"{item.title}: {item.reason or item.field_path}"
                 for item in completeness_result.missing_information
             ],
+            "completeness.blocking_missing_count": [
+                f"{item.title}: {item.reason or item.field_path}"
+                for item in completeness_result.missing_information
+            ],
             "completeness.clarification_count": [
                 f"{item.title}: {item.reason or item.field_path}"
                 for item in completeness_result.clarification_information
+            ],
+            "completeness.blocking_clarification_count": [
+                f"{item.title}: {item.reason or item.field_path}"
+                for item in completeness_result.clarification_information
+            ],
+            "completeness.optional_missing_count": [
+                f"{item.title}: {item.reason or item.field_path}"
+                for item in completeness_result.optional_missing_information
+                if item.status is CompletenessStatus.missing
+            ],
+            "completeness.optional_clarification_count": [
+                f"{item.title}: {item.reason or item.field_path}"
+                for item in completeness_result.optional_missing_information
+                if item.status is CompletenessStatus.clarification
             ],
             "completeness.present_count": [
                 item.title for item in completeness_result.present_information
@@ -533,6 +589,16 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             "risk.types": [
                 f"{risk.type}: {risk.description}"
                 for risk in risks
+            ],
+            "risk.unknown_type_count": [
+                f"{risk.type}: {risk.description}"
+                for risk in risks
+                if risk.type not in self._known_risk_types
+            ],
+            "risk.unknown_types": [
+                f"{risk.type}: {risk.description}"
+                for risk in risks
+                if risk.type not in self._known_risk_types
             ],
             "evaluation.total_count": [
                 f"{item.criterion}: {item.explanation or item.criterion}"
@@ -574,7 +640,11 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         return {
             "completeness.is_complete",
             "completeness.missing_count",
+            "completeness.blocking_missing_count",
             "completeness.clarification_count",
+            "completeness.blocking_clarification_count",
+            "completeness.optional_missing_count",
+            "completeness.optional_clarification_count",
             "completeness.present_count",
             "risk.has_risks",
             "risk.total_count",
@@ -584,6 +654,8 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             "risk.critical_count",
             "risk.max_severity",
             "risk.types",
+            "risk.unknown_type_count",
+            "risk.unknown_types",
             "evaluation.total_count",
             "evaluation.met_count",
             "evaluation.not_met_count",
@@ -795,7 +867,21 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         return {
             "present_count": len(completeness_result.present_information),
             "missing_count": len(completeness_result.missing_information),
+            "blocking_missing_count": len(completeness_result.missing_information),
             "clarification_count": len(completeness_result.clarification_information),
+            "blocking_clarification_count": len(
+                completeness_result.clarification_information
+            ),
+            "optional_missing_count": sum(
+                1
+                for item in completeness_result.optional_missing_information
+                if item.status is CompletenessStatus.missing
+            ),
+            "optional_clarification_count": sum(
+                1
+                for item in completeness_result.optional_missing_information
+                if item.status is CompletenessStatus.clarification
+            ),
         }
 
     @staticmethod

@@ -80,6 +80,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         present_information: list[CompletenessItem] = []
         missing_information: list[CompletenessItem] = []
         critical_missing_information: list[CompletenessItem] = []
+        optional_missing_information: list[CompletenessItem] = []
         clarification_information: list[CompletenessItem] = []
         warnings: list[str] = []
         required_fields_count = 0
@@ -100,14 +101,19 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
                 continue
 
             if item.status is CompletenessStatus.missing:
-                if field_def.required:
+                if self._is_blocking_customer_field(field_def):
                     missing_information.append(item)
                     critical_missing_information.append(item)
+                elif self._is_optional_customer_field(field_def):
+                    optional_missing_information.append(item)
                 continue
 
-            clarification_information.append(item)
-            if item.reason:
-                warnings.append(item.reason)
+            if self._is_blocking_customer_field(field_def):
+                clarification_information.append(item)
+                if item.reason:
+                    warnings.append(item.reason)
+            elif self._is_optional_customer_field(field_def):
+                optional_missing_information.append(item)
 
         level = self._build_level(
             missing_information=missing_information,
@@ -118,6 +124,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
             level=level,
             missing_information=missing_information,
             critical_missing_information=critical_missing_information,
+            optional_missing_information=optional_missing_information,
             present_information=present_information,
             clarification_information=clarification_information,
             warnings=warnings,
@@ -125,6 +132,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
                 checked_fields_count=(
                     len(present_information)
                     + len(missing_information)
+                    + len(optional_missing_information)
                     + len(clarification_information)
                 ),
                 required_fields_count=required_fields_count,
@@ -132,6 +140,7 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
                 present_count=len(present_information),
                 missing_count=len(missing_information),
                 critical_missing_count=len(critical_missing_information),
+                optional_missing_count=len(optional_missing_information),
                 clarification_count=len(clarification_information),
             ),
         )
@@ -164,7 +173,16 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
             resolved_value=resolved_value,
         )
 
-        if status is CompletenessStatus.missing and not field_def.required:
+        if (
+            status is CompletenessStatus.missing
+            and self._is_internal_customer_field(field_def)
+        ):
+            return None
+
+        if (
+            status is CompletenessStatus.clarification
+            and self._is_internal_customer_field(field_def)
+        ):
             return None
 
         return CompletenessItem(
@@ -363,6 +381,18 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
         """Выполняет шаг «is project type field». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return field_def.field_path == "project_type"
 
+    def _is_blocking_customer_field(self, field_def: RequiredField) -> bool:
+        """Выполняет шаг «is blocking customer field». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        return field_def.customer_field_role == "blocking"
+
+    def _is_optional_customer_field(self, field_def: RequiredField) -> bool:
+        """Выполняет шаг «is optional customer field». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        return field_def.customer_field_role == "optional"
+
+    def _is_internal_customer_field(self, field_def: RequiredField) -> bool:
+        """Р’С‹РїРѕР»РЅСЏРµС‚ С€Р°Рі В«is internal customer fieldВ». Р”РѕРєСѓРјРµРЅС‚Р°С†РёСЏ РѕРїРёСЃС‹РІР°РµС‚ РЅР°Р·РЅР°С‡РµРЅРёРµ РјРµС‚РѕРґР°, Р° СЃР°РјР° Р»РѕРіРёРєР° РѕСЃС‚Р°РµС‚СЃСЏ РІ РєРѕРґРµ РЅРёР¶Рµ."""
+        return field_def.customer_field_role == "internal"
+
     def _is_known_project_type(self, value: str) -> bool:
         """Выполняет шаг «is known project type». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._normalize_text(value) in self._project_type_registry
@@ -409,4 +439,3 @@ class CompletenessCheckStage(BaseStage[AIContext, AIContext]):
             "is_complete": result.is_complete if result is not None else None,
             "level": result.level.value if result is not None else None,
         }
-

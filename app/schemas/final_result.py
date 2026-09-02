@@ -11,6 +11,7 @@ RecommendationValue = Literal[
     "clarify",
     "simplify",
     "mentor_review",
+    "accept_with_clarifications",
     "reject",
 ]
 ConfidenceValue = Literal["low", "medium", "high"]

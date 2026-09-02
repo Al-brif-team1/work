@@ -245,6 +245,7 @@ class BriefAnalysisResultBuilder:
         DecisionStatus.clarify: "clarify",
         DecisionStatus.simplify: "simplify",
         DecisionStatus.mentor_review: "mentor_review",
+        DecisionStatus.accept_with_clarifications: "accept_with_clarifications",
         DecisionStatus.reject: "reject",
     }
 
@@ -347,12 +348,15 @@ class BriefAnalysisResultBuilder:
             raise BriefAnalysisResultError("Final result requires arbitration_result")
 
         status = context.arbitration_result.final_status
-        if status is DecisionStatus.clarify and not (
+        if status in {
+            DecisionStatus.clarify,
+            DecisionStatus.accept_with_clarifications,
+        } and not (
             context.clarification_result
             and context.clarification_result.questions
         ):
             raise BriefAnalysisResultError(
-                "CLARIFY final result requires clarification questions"
+                f"{status.value} final result requires clarification questions"
             )
         if status is DecisionStatus.simplify and not (
             context.mvp_planning_result and context.mvp_planning_result.plan

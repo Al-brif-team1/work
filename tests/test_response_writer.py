@@ -471,6 +471,18 @@ class TestPublicJsonContract(unittest.TestCase):
         with self.assertRaises(ValidationError):
             BriefAnalysisResult.model_validate(payload)
 
+    def test_public_schema_accepts_accept_with_clarifications_recommendation(self) -> None:
+        payload = make_public_payload()
+        payload["assessment"]["recommendation"] = "accept_with_clarifications"
+        payload["clarifying_questions"] = ["Какие материалы уже есть?"]
+
+        result = BriefAnalysisResult.model_validate(payload)
+
+        self.assertEqual(
+            result.assessment.recommendation,
+            "accept_with_clarifications",
+        )
+
     def test_public_schema_rejects_invalid_confidence(self) -> None:
         payload = make_public_payload()
         payload["assessment"]["confidence"] = "certain"
@@ -736,6 +748,29 @@ class TestResponseWriterStage(unittest.TestCase):
         with self.assertRaises(BriefAnalysisResultError):
             ResponseWriterStage().run_context(context)
 
+    def test_accept_with_clarifications_response_includes_questions(self) -> None:
+        updated = ResponseWriterStage().run_context(
+            make_context(DecisionStatus.accept_with_clarifications)
+        )
+
+        self.assertIn("Какие материалы уже есть?", updated.final_response_text)
+        self.assertEqual(
+            updated.final_response_payload["assessment"]["recommendation"],
+            "accept_with_clarifications",
+        )
+        self.assertEqual(
+            updated.final_response_payload["clarifying_questions"],
+            ["Какие материалы уже есть?"],
+        )
+
+    def test_accept_with_clarifications_public_payload_requires_questions(self) -> None:
+        context = make_context(
+            DecisionStatus.accept_with_clarifications
+        ).with_clarification_result(make_empty_question_result())
+
+        with self.assertRaises(BriefAnalysisResultError):
+            ResponseWriterStage().run_context(context)
+
     def test_simplify_public_payload_requires_mvp_plan(self) -> None:
         context = make_context(DecisionStatus.simplify)
 
@@ -907,6 +942,9 @@ class TestResponseWriterReasons(unittest.TestCase):
         cases = {
             DecisionStatus.accept: make_context(),
             DecisionStatus.clarify: make_context(DecisionStatus.clarify),
+            DecisionStatus.accept_with_clarifications: make_context(
+                DecisionStatus.accept_with_clarifications
+            ),
             DecisionStatus.mentor_review: make_context(DecisionStatus.mentor_review),
             DecisionStatus.reject: make_reject_context(),
             DecisionStatus.simplify: make_context(

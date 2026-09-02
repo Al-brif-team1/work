@@ -16,6 +16,7 @@ class DecisionStatus(str, Enum):
     clarify = "CLARIFY"
     simplify = "SIMPLIFY"
     mentor_review = "MENTOR_REVIEW"
+    accept_with_clarifications = "ACCEPT_WITH_CLARIFICATIONS"
 
 
 class ArbitrationRuleHit(BaseModel):

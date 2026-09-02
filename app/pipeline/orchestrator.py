@@ -107,7 +107,10 @@ class BriefAnalysisPipeline:
                     tracing_client=tracing,
                 ),
                 # Этот этап детерминированный: он работает без ИИ и берет шаблоны вопросов из question_templates.json.
-                TemplateQuestionGeneratorStage(tracing_client=tracing),
+                TemplateQuestionGeneratorStage(
+                    criteria_config=config,
+                    tracing_client=tracing,
+                ),
                 MVPPlannerStage(
                     llm_runner=llm_runner,
                     tracing_client=tracing,
