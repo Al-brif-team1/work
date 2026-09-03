@@ -15,6 +15,7 @@ from app.pipeline.contracts import BaseStage
 from app.schemas import (
     AIContext,
     AssessmentRecommendation,
+    AssessmentResult,
     ArbitrationResult,
     ClarificationQuestion,
     CompletenessResult,
@@ -22,6 +23,7 @@ from app.schemas import (
     DecisionStatus,
     QuestionGenerationResult,
     QuestionGenerationTechnicalInfo,
+    TrafficLightStatus,
 )
 from app.tracing.tracing import NoOpTracingClient, TracingClient
 
@@ -84,6 +86,7 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
         completeness_result: CompletenessResult,
         *,
         assessment_recommendation: AssessmentRecommendation | None = None,
+        assessment_result: AssessmentResult | None = None,
         arbitration_result: ArbitrationResult | None = None,
     ) -> QuestionGenerationResult:
         """Выполняет шаг «generate». Документация описывает назначение метода, а сама логика остается в коде ниже."""
@@ -108,6 +111,14 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
                     priority=index,
                 )
             )
+
+        questions.extend(
+            self._traffic_light_yellow_questions(
+                assessment_result=assessment_result,
+                arbitration_result=arbitration_result,
+                existing_questions=questions,
+            )
+        )
 
         summary = self._build_summary(
             questions_count=len(questions),
@@ -145,6 +156,7 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
                 if context.assessment_result is not None
                 else None
             ),
+            assessment_result=context.assessment_result,
             arbitration_result=context.arbitration_result,
         )
         return context.with_clarification_result(result)
@@ -195,6 +207,71 @@ class TemplateQuestionGeneratorStage(BaseStage[AIContext, AIContext]):
             for item in items
             if self._customer_field_roles.get(item.field_key) == expected_role
         ]
+
+    def _traffic_light_yellow_questions(
+        self,
+        *,
+        assessment_result: AssessmentResult | None,
+        arbitration_result: ArbitrationResult | None,
+        existing_questions: list[ClarificationQuestion],
+    ) -> list[ClarificationQuestion]:
+        if (
+            arbitration_result is None
+            or arbitration_result.final_status
+            is not DecisionStatus.accept_with_clarifications
+            or assessment_result is None
+            or assessment_result.traffic_light.status is not TrafficLightStatus.yellow
+        ):
+            return []
+
+        result: list[ClarificationQuestion] = []
+        seen_matches: set[tuple[str, str, str]] = set()
+        seen_questions = {
+            self._normalize_question_text(item.question)
+            for item in existing_questions
+        }
+        for match in assessment_result.traffic_light.matches:
+            if match.status is not TrafficLightStatus.yellow:
+                continue
+
+            key = (
+                self._normalize_question_text(match.task),
+                self._normalize_question_text(match.matched_rule),
+                self._normalize_question_text(match.reason),
+            )
+            if key in seen_matches:
+                continue
+            seen_matches.add(key)
+
+            question = self._build_traffic_light_question(match.task, match.reason)
+            normalized_question = self._normalize_question_text(question)
+            if normalized_question in seen_questions:
+                continue
+            seen_questions.add(normalized_question)
+
+            result.append(
+                ClarificationQuestion(
+                    question=question,
+                    related_field="traffic_light",
+                    reason=(
+                        f"Traffic Light yellow match: {match.matched_rule}. "
+                        f"{match.reason}"
+                    ),
+                    priority=len(existing_questions) + len(result) + 1,
+                )
+            )
+        return result
+
+    @staticmethod
+    def _build_traffic_light_question(task: str, reason: str) -> str:
+        return (
+            f'По задаче "{task}" нужно уточнить: {reason}. '
+            "Как это должно быть учтено в первой версии проекта?"
+        )
+
+    @staticmethod
+    def _normalize_question_text(value: str) -> str:
+        return " ".join(value.strip().lower().split())
 
     @staticmethod
     def _build_summary(

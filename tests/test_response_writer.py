@@ -13,6 +13,7 @@ from app.pipeline import (
     BriefAnalysisResultBuilder,
     BriefAnalysisResultError,
     ResponseWriterStage,
+    TemplateQuestionGeneratorStage,
 )
 from app.schemas import (
     AIContext,
@@ -38,6 +39,9 @@ from app.schemas import (
     QuestionGenerationTechnicalInfo,
     Risk,
     RiskSeverity,
+    TrafficLightMatch,
+    TrafficLightResult,
+    TrafficLightStatus,
 )
 
 
@@ -603,6 +607,51 @@ class TestResponseWriterStage(unittest.TestCase):
         self.assertEqual(
             updated.final_response_payload["extracted_fields"]["direction"],
             "development",
+        )
+
+    def test_traffic_light_yellow_accept_with_clarifications_builds_public_json(
+        self,
+    ) -> None:
+        context = make_context().with_arbitration_result(
+            ArbitrationResult(
+                final_status=DecisionStatus.accept_with_clarifications,
+                reasons=["Traffic Light yellow"],
+                confidence=0.9,
+            )
+        )
+        assessment = context.assessment_result
+        assert assessment is not None
+        context = context.with_assessment_result(
+            assessment.model_copy(
+                update={
+                    "traffic_light": TrafficLightResult(
+                        status=TrafficLightStatus.yellow,
+                        matches=[
+                            TrafficLightMatch(
+                                task="Build dashboard with advanced filters",
+                                matched_rule="Advanced dashboard",
+                                status=TrafficLightStatus.yellow,
+                                reason=(
+                                    "Students can do it if the first version "
+                                    "has a bounded scope"
+                                ),
+                            )
+                        ],
+                    )
+                }
+            )
+        )
+
+        context = TemplateQuestionGeneratorStage().run_context(context)
+        updated = ResponseWriterStage().run_context(context)
+
+        self.assertEqual(
+            updated.final_response_payload["assessment"]["recommendation"],
+            "accept_with_clarifications",
+        )
+        self.assertGreaterEqual(
+            len(updated.final_response_payload["clarifying_questions"]),
+            1,
         )
 
     def test_public_direction_accepts_canonical_development(self) -> None:

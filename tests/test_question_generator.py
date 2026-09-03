@@ -10,10 +10,14 @@ from app.pipeline import BaseStage, QuestionGenerationError, TemplateQuestionGen
 from app.schemas import (
     AIContext,
     ArbitrationResult,
+    AssessmentResult,
     AssessmentRecommendation,
     CompletenessItem,
     CompletenessResult,
     CompletenessStatus,
+    TrafficLightMatch,
+    TrafficLightResult,
+    TrafficLightStatus,
     DecisionStatus,
 )
 
@@ -45,6 +49,39 @@ def make_clarification_item(field_key: str, title: str) -> CompletenessItem:
 
 def make_arbitration_result(status: DecisionStatus) -> ArbitrationResult:
     return ArbitrationResult(final_status=status)
+
+
+def make_assessment_with_traffic_light(
+    status: TrafficLightStatus,
+    *,
+    matches: list[TrafficLightMatch] | None = None,
+) -> AssessmentResult:
+    return AssessmentResult(
+        criterion_evaluations=[],
+        risks=[],
+        has_risks=False,
+        recommendation=AssessmentRecommendation.ready_for_arbitration,
+        traffic_light=TrafficLightResult(
+            status=status,
+            direction="analytics",
+            specialization="dashboards",
+            matches=matches or [],
+        ),
+    )
+
+
+def make_yellow_match(
+    *,
+    task: str = "Build dashboard with advanced filters",
+    matched_rule: str = "Advanced dashboard for analytics students",
+    reason: str = "Students can do it if the first version has a bounded scope",
+) -> TrafficLightMatch:
+    return TrafficLightMatch(
+        task=task,
+        matched_rule=matched_rule,
+        status=TrafficLightStatus.yellow,
+        reason=reason,
+    )
 
 
 def make_criteria_config(
@@ -210,6 +247,110 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
             [question.related_field for question in result.questions],
             ["materials", "deadlines"],
         )
+
+    def test_accept_with_clarifications_generates_traffic_light_yellow_question_for_complete_brief(
+        self,
+    ) -> None:
+        stage = TemplateQuestionGeneratorStage()
+        match = make_yellow_match()
+
+        result = stage.generate(
+            make_completeness_result([]),
+            assessment_result=make_assessment_with_traffic_light(
+                TrafficLightStatus.yellow,
+                matches=[match],
+            ),
+            arbitration_result=make_arbitration_result(
+                DecisionStatus.accept_with_clarifications
+            ),
+        )
+
+        self.assertGreaterEqual(len(result.questions), 1)
+        self.assertEqual(result.questions[0].related_field, "traffic_light")
+        self.assertIn(match.task, result.questions[0].question)
+        self.assertIn(match.reason, result.questions[0].question)
+        self.assertFalse(result.technical_info.llm_invoked)
+
+    def test_accept_with_clarifications_keeps_optional_question_with_traffic_light_yellow(
+        self,
+    ) -> None:
+        stage = TemplateQuestionGeneratorStage(
+            templates={"materials": "What materials are available?"}
+        )
+
+        result = stage.generate(
+            make_completeness_result(
+                [],
+                optional_missing_information=[
+                    make_missing_item("materials", "Available materials")
+                ],
+            ),
+            assessment_result=make_assessment_with_traffic_light(
+                TrafficLightStatus.yellow,
+                matches=[make_yellow_match()],
+            ),
+            arbitration_result=make_arbitration_result(
+                DecisionStatus.accept_with_clarifications
+            ),
+        )
+
+        self.assertEqual(result.questions[0].question, "What materials are available?")
+        self.assertIn("traffic_light", [question.related_field for question in result.questions])
+
+    def test_duplicate_traffic_light_yellow_matches_do_not_create_duplicate_questions(
+        self,
+    ) -> None:
+        stage = TemplateQuestionGeneratorStage()
+        match = make_yellow_match()
+
+        result = stage.generate(
+            make_completeness_result([]),
+            assessment_result=make_assessment_with_traffic_light(
+                TrafficLightStatus.yellow,
+                matches=[match, match.model_copy()],
+            ),
+            arbitration_result=make_arbitration_result(
+                DecisionStatus.accept_with_clarifications
+            ),
+        )
+
+        self.assertEqual(
+            [question.related_field for question in result.questions],
+            ["traffic_light"],
+        )
+
+    def test_traffic_light_fallback_questions_are_not_generated_for_non_yellow_statuses(
+        self,
+    ) -> None:
+        stage = TemplateQuestionGeneratorStage()
+
+        for status in (
+            TrafficLightStatus.green,
+            TrafficLightStatus.unknown,
+            TrafficLightStatus.red,
+        ):
+            with self.subTest(status=status):
+                result = stage.generate(
+                    make_completeness_result([]),
+                    assessment_result=make_assessment_with_traffic_light(
+                        status,
+                        matches=[
+                            TrafficLightMatch(
+                                task="Build dashboard",
+                                matched_rule="Dashboard rule",
+                                status=status,
+                                reason="Traffic Light reason",
+                            )
+                        ]
+                        if status is not TrafficLightStatus.unknown
+                        else [],
+                    ),
+                    arbitration_result=make_arbitration_result(
+                        DecisionStatus.accept_with_clarifications
+                    ),
+                )
+
+                self.assertEqual(result.questions, [])
 
     def test_integrations_optional_missing_and_uncertain_generate_questions(
         self,
