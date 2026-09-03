@@ -22,6 +22,8 @@ from app.schemas import (
     ExtractedBrief,
     ExtractedFact,
     FactStatus,
+    TrafficLightResult,
+    TrafficLightStatus,
 )
 from app.tracing.tracing import NoOpTracingClient
 
@@ -141,6 +143,7 @@ def make_assessment_result() -> AssessmentResult:
         has_risks=False,
         recommendation=AssessmentRecommendation.ready_for_arbitration,
         confidence=0.9,
+        traffic_light=TrafficLightResult(status=TrafficLightStatus.green),
         technical_info=AssessmentTechnicalInfo(
             attempts=1,
             prompt_name="assessment.md",

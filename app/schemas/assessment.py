@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.schemas.evaluation import CriterionEvaluation
 from app.schemas.risk import Risk
+from app.schemas.traffic_light import TrafficLightResult
 
 
 class AssessmentRecommendation(str, Enum):
@@ -70,6 +71,7 @@ class AssessmentPayload(BaseModel):
     recommendation: AssessmentRecommendation
     summary: str | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    traffic_light: TrafficLightResult = Field(default_factory=TrafficLightResult)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -91,6 +93,7 @@ class AssessmentResult(BaseModel):
     recommendation: AssessmentRecommendation
     summary: str | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    traffic_light: TrafficLightResult = Field(default_factory=TrafficLightResult)
     technical_info: AssessmentTechnicalInfo = Field(
         default_factory=AssessmentTechnicalInfo
     )

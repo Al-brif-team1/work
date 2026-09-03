@@ -58,6 +58,11 @@ from app.schemas.risk import (
     Risk,
     RiskSeverity,
 )
+from app.schemas.traffic_light import (
+    TrafficLightMatch,
+    TrafficLightResult,
+    TrafficLightStatus,
+)
 
 __all__ = [
     "AIContext",
@@ -107,4 +112,7 @@ __all__ = [
     "SearchResult",
     "Risk",
     "RiskSeverity",
+    "TrafficLightMatch",
+    "TrafficLightResult",
+    "TrafficLightStatus",
 ]

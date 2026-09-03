@@ -289,6 +289,56 @@ class TestCompletenessCheckStage(unittest.TestCase):
         )
         self.assertEqual(result.technical_info.optional_missing_count, 3)
 
+    def test_explicit_negative_integrations_are_present_not_optional_missing(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        brief = make_brief(
+            project_goal=fact("Build a support bot"),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("support automation"),
+            expected_result=fact("Working support bot"),
+            materials=[fact("Support scripts")],
+            deadlines=[fact("Q4")],
+            integrations=[fact("Интеграции с внешними API не требуются")],
+        )
+
+        result = checker.check(brief)
+
+        self.assertTrue(result.is_complete)
+        self.assertNotIn(
+            "integrations",
+            {item.field_key for item in result.optional_missing_information},
+        )
+        self.assertIn(
+            "integrations",
+            {item.field_key for item in result.present_information},
+        )
+
+    def test_future_provided_materials_are_present_not_optional_missing(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        brief = make_brief(
+            project_goal=fact("Build a support bot"),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("support automation"),
+            expected_result=fact("Working support bot"),
+            materials=[fact("Заказчик предоставит необходимые материалы")],
+            deadlines=[fact("Q4")],
+            integrations=[fact("CRM")],
+        )
+
+        result = checker.check(brief)
+
+        self.assertTrue(result.is_complete)
+        self.assertNotIn(
+            "materials",
+            {item.field_key for item in result.optional_missing_information},
+        )
+        self.assertIn(
+            "materials",
+            {item.field_key for item in result.present_information},
+        )
+
     def test_multiple_missing_fields_are_reported(self) -> None:
         checker = CompletenessCheckStage(criteria_path=self.criteria_path)
         brief = make_brief(

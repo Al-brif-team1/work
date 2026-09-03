@@ -8,6 +8,7 @@ import unittest
 
 from tests.test_response_writer import find_latin_words
 
+from app.llm.runner import LLMRunnerProviderError
 from app.pipeline import (
     AssessmentStage,
     BriefAnalysisPipeline,
@@ -35,6 +36,9 @@ from app.schemas import (
     ExtractedBrief,
     ExtractedFact,
     FactStatus,
+    TrafficLightMatch,
+    TrafficLightResult,
+    TrafficLightStatus,
 )
 from app.tracing.tracing import NoOpTracingClient
 
@@ -127,7 +131,7 @@ class ArbiterStageStub:
 class FakeProductionLLMClient:
     """Класс «FakeProductionLLMClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
-    def __init__(self, responses: list[dict[str, Any]]) -> None:
+    def __init__(self, responses: list[dict[str, Any] | Exception]) -> None:
         self._responses = list(responses)
         self.calls: list[dict[str, Any]] = []
 
@@ -245,6 +249,56 @@ def _ready_assessment_payload() -> dict[str, Any]:
         recommendation=AssessmentRecommendation.ready_for_arbitration,
         summary="Портал для приёма обращений клиентов.",
         confidence=0.9,
+        traffic_light=TrafficLightResult(
+            status=TrafficLightStatus.green,
+            direction="programming",
+            specialization="web_frontend",
+            matches=[
+                TrafficLightMatch(
+                    task="Небольшой веб-портал для приёма обращений клиентов.",
+                    matched_rule="многостраничные сайты, лендинги",
+                    status=TrafficLightStatus.green,
+                    reason="Портал соответствует green-правилу веб/фронтенд-разработки.",
+                )
+            ],
+        ),
+    ).model_dump(mode="json")
+
+
+def _simplify_assessment_payload() -> dict[str, Any]:
+    return AssessmentPayload(
+        criterion_evaluations=[
+            CriterionEvaluation(
+                criterion="goal_clarity",
+                status=CriterionEvaluationStatus.met,
+                explanation="Р¦РµР»СЊ СЃС„РѕСЂРјСѓР»РёСЂРѕРІР°РЅР° СЏРІРЅРѕ.",
+            ),
+            CriterionEvaluation(
+                criterion="scope_definition",
+                status=CriterionEvaluationStatus.risk_detected,
+                explanation="РџРµСЂРІР°СЏ РІРµСЂСЃРёСЏ РІС‹РіР»СЏРґРёС‚ СЃР»РёС€РєРѕРј С€РёСЂРѕРєРѕР№.",
+            ),
+        ],
+        risks=[
+            {
+                "type": "scope_too_large",
+                "description": "РћР±СЉРµРј РїРµСЂРІРѕР№ РІРµСЂСЃРёРё РЅСѓР¶РЅРѕ СЃРѕРєСЂР°С‚РёС‚СЊ.",
+                "severity": "high",
+                "evidence": ["Р¤РѕСЂРјР° РѕР±СЂР°С‰РµРЅРёСЏ Рё СЌРєСЂР°РЅ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ"],
+                "confidence": 0.9,
+            }
+        ],
+        evidence=[],
+        has_risks=True,
+        recommendation=AssessmentRecommendation.high_risk_review,
+        summary="РџРѕСЂС‚Р°Р» РЅСѓР¶РЅРѕ СЃРѕРєСЂР°С‚РёС‚СЊ РґРѕ Р±Р°Р·РѕРІРѕРіРѕ MVP.",
+        confidence=0.9,
+        traffic_light=TrafficLightResult(
+            status=TrafficLightStatus.green,
+            direction="programming",
+            specialization="web_frontend",
+            matches=[],
+        ),
     ).model_dump(mode="json")
 
 
@@ -280,6 +334,30 @@ class TestBriefAnalysisPipeline(unittest.TestCase):
         )
         self.assertFalse(any(isinstance(stage, legacy_stage_types) for stage in pipeline._stages))
 
+    def test_insert_stage_after_adds_stage_after_first_matching_type(self) -> None:
+        inserted = ArbiterStageStub()
+        pipeline = BriefAnalysisPipeline(
+            stages=[
+                ExtractionStageStub(),
+                AssessmentStageStub(),
+                ResponseWriterStage(),
+            ]
+        )
+
+        was_inserted = pipeline.insert_stage_after(AssessmentStageStub, inserted)
+
+        self.assertTrue(was_inserted)
+        self.assertEqual(
+            tuple(type(stage) for stage in pipeline._stages),
+            (
+                ExtractionStageStub,
+                AssessmentStageStub,
+                ArbiterStageStub,
+                ResponseWriterStage,
+            ),
+        )
+        self.assertIs(pipeline._stages[2], inserted)
+
     def test_production_factory_runs_end_to_end_with_fake_llm(self) -> None:
         fake_client = FakeProductionLLMClient(
             [
@@ -300,6 +378,26 @@ class TestBriefAnalysisPipeline(unittest.TestCase):
         self.assertEqual(result.clarifying_questions, [])
         self.assertEqual(result.mvp_suggestion, "")
         self.assertEqual(len(fake_client.calls), 2)
+
+    def test_production_factory_simplify_survives_mvp_provider_failure(self) -> None:
+        fake_client = FakeProductionLLMClient(
+            [
+                _minimal_extraction_payload(),
+                _simplify_assessment_payload(),
+                LLMRunnerProviderError("429 rate limit"),
+                LLMRunnerProviderError("429 rate limit"),
+            ]
+        )
+        pipeline = _build_factory_pipeline(fake_client)
+
+        result = pipeline.analyze_text(
+            "РќСѓР¶РµРЅ РІРµР±-РїРѕСЂС‚Р°Р» РґР»СЏ РїСЂРёС‘РјР° РѕР±СЂР°С‰РµРЅРёР№ РєР»РёРµРЅС‚РѕРІ."
+        )
+
+        self.assertEqual(result.assessment.recommendation, "simplify")
+        self.assertTrue(result.mvp_suggestion.strip())
+        self.assertTrue(result.customer_response_draft.strip())
+        self.assertEqual(len(fake_client.calls), 4)
 
     def test_production_factory_draft_has_no_internal_english(self) -> None:
         # Боевой criteria.yaml англоязычный: этот тест ловит любую его строку,

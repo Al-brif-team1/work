@@ -21,6 +21,15 @@ from app.config.criteria import (
     TaskType,
     get_criteria_config,
 )
+from app.config.traffic_light import (
+    TrafficLightConfig,
+    TrafficLightConfigError,
+    TrafficLightConfiguration,
+    TrafficLightDirection,
+    TrafficLightLoader,
+    TrafficLightSpecialization,
+    get_traffic_light_config,
+)
 
 __all__ = [
     "Config",
@@ -44,4 +53,11 @@ __all__ = [
     "TaskType",
     "get_criteria_config",
     "get_settings",
+    "TrafficLightConfig",
+    "TrafficLightConfigError",
+    "TrafficLightConfiguration",
+    "TrafficLightDirection",
+    "TrafficLightLoader",
+    "TrafficLightSpecialization",
+    "get_traffic_light_config",
 ]

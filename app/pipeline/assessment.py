@@ -15,6 +15,9 @@ from app.config import (
     Criterion,
     RestrictedTopic,
     RiskType,
+    TrafficLightConfig,
+    TrafficLightConfigError,
+    get_traffic_light_config,
     get_criteria_config,
 )
 from app.llm.runner import LLMRunResult, LLMRunner
@@ -32,6 +35,11 @@ from app.schemas.assessment import (
 from app.schemas.evaluation import CriterionEvaluation, CriterionEvaluationStatus
 from app.schemas.knowledge import SearchResult
 from app.schemas.risk import Risk, RiskSeverity
+from app.schemas.traffic_light import (
+    TrafficLightMatch,
+    TrafficLightResult,
+    TrafficLightStatus,
+)
 from app.tracing.tracing import TracingClient
 
 if TYPE_CHECKING:
@@ -63,6 +71,7 @@ class AssessmentPreparedInput(BaseModel):
 
     context: AIContext
     criteria_config: CriteriaConfig
+    traffic_light_config: TrafficLightConfig
     criteria: list[Criterion]
     risk_types: list[RiskType]
     restricted_topics: list[RestrictedTopic] = Field(default_factory=list)
@@ -97,6 +106,7 @@ class AssessmentPreparedInput(BaseModel):
                 else None
             ),
             "criteria_config": self.criteria_config.model_dump(mode="json"),
+            "traffic_light_config": self.traffic_light_config.model_dump(mode="json"),
             "retrieved_context": [
                 item.model_dump(mode="json") for item in self.retrieved_context
             ],
@@ -250,6 +260,7 @@ class AssessmentStage(
         retriever: AssessmentRetriever | None = None,
         criteria_config: CriteriaConfig | None = None,
         criteria_path: str | Path | None = None,
+        traffic_light_config: TrafficLightConfig | None = None,
     ) -> None:
         """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         super().__init__(
@@ -267,6 +278,7 @@ class AssessmentStage(
             retriever=retriever,
             criteria_config=criteria_config,
             criteria_path=criteria_path,
+            traffic_light_config=traffic_light_config,
         )
         self._restricted_topics = RestrictedTopicMatcher(
             self._preparation.criteria_config
@@ -347,6 +359,13 @@ class AssessmentStage(
     ) -> AssessmentResult:
         """Выполняет шаг «postprocess». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         payload = self._normalize_payload(result.payload)
+        traffic_light = payload.traffic_light.model_copy(
+            update={
+                "status": self._compute_traffic_light_status(
+                    payload.traffic_light
+                )
+            }
+        )
         return AssessmentResult(
             criterion_evaluations=payload.criterion_evaluations,
             risks=payload.risks,
@@ -355,6 +374,7 @@ class AssessmentStage(
             recommendation=payload.recommendation,
             summary=self._strip_optional_text(payload.summary),
             confidence=payload.confidence,
+            traffic_light=traffic_light,
             technical_info=AssessmentTechnicalInfo(
                 attempts=result.attempts,
                 prompt_name=self.prompt_name,
@@ -408,6 +428,9 @@ class AssessmentStage(
                     item.model_dump(mode="json")
                     for item in stage_input.restricted_topics
                 ],
+                "traffic_light_config": stage_input.traffic_light_config.model_dump(
+                    mode="json"
+                ),
                 "retrieved_context": [
                     item.model_dump(mode="json")
                     for item in stage_input.retrieved_context
@@ -430,8 +453,90 @@ class AssessmentStage(
                     if item.quote.strip()
                 ],
                 "summary": self._strip_optional_text(payload.summary),
+                "traffic_light": self._normalize_traffic_light(
+                    payload.traffic_light
+                ),
             }
         )
+
+    def _normalize_traffic_light(
+        self,
+        traffic_light: TrafficLightResult,
+    ) -> TrafficLightResult:
+        """Normalize traffic-light matches against the configured rule source."""
+        rule_index = self._build_traffic_light_rule_index()
+        matches: list[TrafficLightMatch] = []
+        rule_directions: set[str] = set()
+        rule_specializations: set[str] = set()
+
+        for match in traffic_light.matches:
+            rule = rule_index.get(self._normalize_traffic_light_rule(match.matched_rule))
+            if rule is None:
+                matches.append(
+                    match.model_copy(update={"status": TrafficLightStatus.unknown})
+                )
+                continue
+
+            direction, specialization, status = rule
+            rule_directions.add(direction)
+            rule_specializations.add(specialization)
+            matches.append(match.model_copy(update={"status": status}))
+
+        normalized = traffic_light.model_copy(update={"matches": matches})
+        updates: dict[str, object] = {
+            "direction": None,
+            "specialization": None,
+            "status": self._compute_traffic_light_status(normalized),
+        }
+        if len(rule_directions) == 1:
+            updates["direction"] = next(iter(rule_directions))
+        if len(rule_specializations) == 1:
+            updates["specialization"] = next(iter(rule_specializations))
+        return normalized.model_copy(update=updates)
+
+    def _build_traffic_light_rule_index(
+        self,
+    ) -> dict[str, tuple[str, str, TrafficLightStatus] | None]:
+        """Build exact normalized rule lookup from traffic-light configuration."""
+        rules: dict[str, tuple[str, str, TrafficLightStatus] | None] = {}
+        config = self._preparation.traffic_light_config.traffic_light
+        for direction in config.directions:
+            for specialization in direction.specializations:
+                for color in ("green", "yellow", "red"):
+                    status = TrafficLightStatus(color)
+                    for rule in getattr(specialization, color):
+                        normalized_rule = self._normalize_traffic_light_rule(rule)
+                        rule_location = (
+                            direction.key,
+                            specialization.key,
+                            status,
+                        )
+                        if normalized_rule in rules:
+                            rules[normalized_rule] = None
+                            continue
+                        rules[normalized_rule] = rule_location
+        return rules
+
+    @staticmethod
+    def _normalize_traffic_light_rule(value: str) -> str:
+        """Normalize only technical text differences for exact rule lookup."""
+        return " ".join(value.strip().lower().split())
+
+    @staticmethod
+    def _compute_traffic_light_status(
+        traffic_light: TrafficLightResult,
+    ) -> TrafficLightStatus:
+        """Compute overall traffic-light status from task matches."""
+        statuses = [match.status for match in traffic_light.matches]
+        if TrafficLightStatus.red in statuses:
+            return TrafficLightStatus.red
+        if TrafficLightStatus.unknown in statuses:
+            return TrafficLightStatus.unknown
+        if TrafficLightStatus.yellow in statuses:
+            return TrafficLightStatus.yellow
+        if TrafficLightStatus.green in statuses:
+            return TrafficLightStatus.green
+        return TrafficLightStatus.unknown
 
     @classmethod
     def _normalize_criterion(
@@ -495,6 +600,7 @@ class AssessmentPreparation:
         retriever: AssessmentRetriever | None = None,
         criteria_config: CriteriaConfig | None = None,
         criteria_path: str | Path | None = None,
+        traffic_light_config: TrafficLightConfig | None = None,
     ) -> None:
         """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         if criteria_config is not None and criteria_path is not None:
@@ -502,6 +608,9 @@ class AssessmentPreparation:
 
         self._retriever = retriever
         self._config = self._load_config(criteria_config, criteria_path)
+        self._traffic_light_config = self._load_traffic_light_config(
+            traffic_light_config
+        )
         self._criteria = list(self._config.evaluation.criteria)
         self._risk_types = list(self._config.evaluation.risk_analysis.risk_types)
         # Секции может не быть: урезанные конфиги в тестах описывают только правила.
@@ -531,6 +640,11 @@ class AssessmentPreparation:
         return list(self._restricted_topics)
 
     @property
+    def traffic_light_config(self) -> TrafficLightConfig:
+        """Return traffic-light configuration for prompt rendering."""
+        return self._traffic_light_config
+
+    @property
     def retriever_used(self) -> bool:
         """Выполняет шаг «retriever used». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self._retriever is not None
@@ -555,6 +669,7 @@ class AssessmentPreparation:
         return AssessmentPreparedInput(
             context=context.with_retrieved_context(retrieved_context),
             criteria_config=self._config,
+            traffic_light_config=self._traffic_light_config,
             criteria=self._criteria,
             risk_types=self._risk_types,
             restricted_topics=self._restricted_topics,
@@ -644,3 +759,15 @@ class AssessmentPreparation:
             )
 
         return config
+
+    @staticmethod
+    def _load_traffic_light_config(
+        traffic_light_config: TrafficLightConfig | None,
+    ) -> TrafficLightConfig:
+        if traffic_light_config is not None:
+            return traffic_light_config
+
+        try:
+            return get_traffic_light_config()
+        except TrafficLightConfigError as exc:
+            raise AssessmentConfigError(str(exc)) from exc

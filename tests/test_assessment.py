@@ -42,6 +42,9 @@ from app.schemas import (
     Risk,
     RiskSeverity,
     SearchResult,
+    TrafficLightMatch,
+    TrafficLightResult,
+    TrafficLightStatus,
 )
 from app.tracing.tracing import NoOpTracingClient
 
@@ -174,6 +177,37 @@ def make_context() -> AIContext:
     )
 
 
+def make_context_without_tasks() -> AIContext:
+    """Build context where explicit project work is present outside tasks."""
+    brief_input = BriefInputFactory().from_text(
+        "Нужно создать телеграм-бота на Python для записи клиентов и отправки уведомлений."
+    )
+    extracted = make_extracted_brief().model_copy(
+        update={
+            "project_goal": ExtractedFact(
+                status=FactStatus.explicit,
+                value="создать телеграм-бота на Python",
+                evidence=["создать телеграм-бота на Python"],
+                confidence=0.9,
+            ),
+            "tasks": [],
+            "expected_result": ExtractedFact(
+                status=FactStatus.explicit,
+                value="телеграм-бот для записи клиентов и отправки уведомлений",
+                evidence=[
+                    "телеграм-бота на Python для записи клиентов и отправки уведомлений"
+                ],
+                confidence=0.9,
+            ),
+        }
+    )
+    return (
+        AIContext.from_brief(brief_input)
+        .with_extracted_brief(extracted)
+        .with_completeness_result(make_completeness_result())
+    )
+
+
 def make_search_result() -> SearchResult:
     """Выполняет шаг «make search result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return SearchResult(
@@ -251,6 +285,42 @@ def make_assessment_payload() -> AssessmentPayload:
         recommendation=AssessmentRecommendation.high_risk_review,
         summary=" Assessment identified one risk. ",
         confidence=0.82,
+    )
+
+
+def make_assessment_payload_with_traffic_light(
+    *,
+    status: TrafficLightStatus,
+    matches: list[TrafficLightMatch],
+) -> AssessmentPayload:
+    """Build an otherwise ordinary assessment payload with traffic-light data."""
+    return AssessmentPayload(
+        criterion_evaluations=[],
+        risks=[],
+        evidence=[],
+        has_risks=False,
+        recommendation=AssessmentRecommendation.ready_for_arbitration,
+        traffic_light=TrafficLightResult(
+            status=status,
+            direction="Программирование",
+            specialization="Питон/питон+",
+            matches=matches,
+            reason="LLM supplied summary",
+        ),
+    )
+
+
+def make_traffic_light_match(
+    status: TrafficLightStatus,
+    task: str,
+    matched_rule: str | None = None,
+) -> TrafficLightMatch:
+    """Build a single traffic-light match for assessment tests."""
+    return TrafficLightMatch(
+        task=task,
+        matched_rule=matched_rule or f"rule for {task}",
+        status=status,
+        reason=f"{status.value} match",
     )
 
 
@@ -494,8 +564,226 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertEqual(runner.calls[0]["span_name"], "assessment.llm")
         self.assertIn("Build a support bot", runner.calls[0]["prompt"])
         self.assertIn("Evaluation criteria", runner.calls[0]["prompt"])
+        self.assertIn("Traffic-light config", runner.calls[0]["prompt"])
+        self.assertIn("создание телеграм-бота", runner.calls[0]["prompt"])
         self.assertIn("assessment analyst", runner.calls[0]["system_prompt"])
         self.assertNotIn("Build a support bot", runner.calls[0]["system_prompt"])
+
+    def test_traffic_light_prompt_uses_goal_and_expected_result_when_tasks_empty(
+        self,
+    ) -> None:
+        stage = AssessmentStage(
+            llm_runner=FakeLLMRunner(make_assessment_payload()),
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        prepared = stage._preparation.prepare(make_context_without_tasks())
+        prompt = stage.build_prompt(prepared)
+        system_prompt = stage.build_system_prompt(prepared)
+
+        self.assertIn("создать телеграм-бота на Python", prompt)
+        self.assertIn(
+            "телеграм-бот для записи клиентов и отправки уведомлений",
+            prompt,
+        )
+        self.assertIsNotNone(system_prompt)
+        self.assertIn(
+            "extracted_brief.tasks, extracted_brief.project_goal, and extracted_brief.expected_result",
+            system_prompt,
+        )
+        self.assertIn("Do not decompose a goal into hidden subtasks.", system_prompt)
+
+    def test_traffic_light_single_green_match_sets_overall_green(self) -> None:
+        result = self._run_assessment_with_traffic_light(
+            llm_status=TrafficLightStatus.green,
+            match_statuses=[TrafficLightStatus.green],
+        )
+
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.green)
+
+    def test_traffic_light_green_and_yellow_sets_overall_yellow(self) -> None:
+        result = self._run_assessment_with_traffic_light(
+            llm_status=TrafficLightStatus.green,
+            match_statuses=[TrafficLightStatus.green, TrafficLightStatus.yellow],
+        )
+
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.yellow)
+
+    def test_traffic_light_green_and_red_sets_overall_red(self) -> None:
+        result = self._run_assessment_with_traffic_light(
+            llm_status=TrafficLightStatus.green,
+            match_statuses=[TrafficLightStatus.green, TrafficLightStatus.red],
+        )
+
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.red)
+
+    def test_traffic_light_green_and_unknown_sets_overall_unknown(self) -> None:
+        result = self._run_assessment_with_traffic_light(
+            llm_status=TrafficLightStatus.green,
+            match_statuses=[TrafficLightStatus.green, TrafficLightStatus.unknown],
+        )
+
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.unknown)
+
+    def test_traffic_light_red_and_unknown_sets_overall_red(self) -> None:
+        result = self._run_assessment_with_traffic_light(
+            llm_status=TrafficLightStatus.green,
+            match_statuses=[TrafficLightStatus.red, TrafficLightStatus.unknown],
+        )
+
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.red)
+
+    def test_traffic_light_empty_matches_sets_overall_unknown(self) -> None:
+        result = self._run_assessment_with_traffic_light(
+            llm_status=TrafficLightStatus.green,
+            match_statuses=[],
+        )
+
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.unknown)
+
+    def test_traffic_light_llm_status_is_overridden_by_matches(self) -> None:
+        result = self._run_assessment_with_traffic_light(
+            llm_status=TrafficLightStatus.green,
+            match_statuses=[TrafficLightStatus.red],
+        )
+
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.red)
+        self.assertEqual(result.traffic_light.matches[0].status, TrafficLightStatus.red)
+
+    def test_traffic_light_existing_rule_uses_config_color(self) -> None:
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.yellow,
+                    "customer relationship management",
+                    "CRM",
+                )
+            ]
+        )
+
+        self.assertEqual(result.traffic_light.matches[0].status, TrafficLightStatus.green)
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.green)
+
+    def test_traffic_light_existing_rule_sets_config_direction_and_specialization(
+        self,
+    ) -> None:
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.yellow,
+                    "customer relationship management",
+                    "CRM",
+                )
+            ]
+        )
+
+        self.assertEqual(result.traffic_light.direction, "programming")
+        self.assertEqual(result.traffic_light.specialization, "python")
+
+    def test_traffic_light_unknown_rule_becomes_unknown(self) -> None:
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.red,
+                    "unmatched task",
+                    "no such traffic-light rule",
+                )
+            ]
+        )
+
+        self.assertEqual(result.traffic_light.matches[0].status, TrafficLightStatus.unknown)
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.unknown)
+        self.assertIsNone(result.traffic_light.direction)
+        self.assertIsNone(result.traffic_light.specialization)
+
+    def test_traffic_light_duplicate_rule_text_becomes_unknown(self) -> None:
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.red,
+                    "private network",
+                    "VPN",
+                )
+            ]
+        )
+
+        self.assertEqual(result.traffic_light.matches[0].status, TrafficLightStatus.unknown)
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.unknown)
+        self.assertIsNone(result.traffic_light.direction)
+        self.assertIsNone(result.traffic_light.specialization)
+
+    def test_traffic_light_overall_status_uses_normalized_match_colors(self) -> None:
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.yellow,
+                    "customer relationship management",
+                    "CRM",
+                ),
+                make_traffic_light_match(
+                    TrafficLightStatus.green,
+                    "unity game",
+                    "разработка игр на unity",
+                ),
+            ]
+        )
+
+        self.assertEqual(
+            [match.status for match in result.traffic_light.matches],
+            [TrafficLightStatus.green, TrafficLightStatus.red],
+        )
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.red)
+
+    def _run_assessment_with_traffic_light(
+        self,
+        *,
+        llm_status: TrafficLightStatus,
+        match_statuses: list[TrafficLightStatus],
+    ) -> AssessmentResult:
+        rules_by_status = {
+            TrafficLightStatus.green: "создание телеграм-бота",
+            TrafficLightStatus.yellow: "простая текстовая игра (например, крестики-нолики, змейка или угадай слово)",
+            TrafficLightStatus.red: "разработка игр на unity",
+            TrafficLightStatus.unknown: "no matching traffic-light rule",
+        }
+        matches = [
+            make_traffic_light_match(
+                status,
+                f"task {index}",
+                rules_by_status[status],
+            )
+            for index, status in enumerate(match_statuses, start=1)
+        ]
+        stage = AssessmentStage(
+            llm_runner=FakeLLMRunner(
+                make_assessment_payload_with_traffic_light(
+                    status=llm_status,
+                    matches=matches,
+                )
+            ),
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        return stage.run(stage._preparation.prepare(make_context()))
+
+    def _run_assessment_with_traffic_light_matches(
+        self,
+        matches: list[TrafficLightMatch],
+    ) -> AssessmentResult:
+        stage = AssessmentStage(
+            llm_runner=FakeLLMRunner(
+                make_assessment_payload_with_traffic_light(
+                    status=TrafficLightStatus.green,
+                    matches=matches,
+                )
+            ),
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        return stage.run(stage._preparation.prepare(make_context()))
 
     def test_assess_updates_ai_context_by_copy(self) -> None:
         runner = FakeLLMRunner(make_assessment_payload())

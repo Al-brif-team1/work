@@ -11,7 +11,41 @@ from typing import Sequence
 from app.config import Config
 from app.input import BriefInputError, BriefInputFactory
 from app.llm.factory import LLMClientFactory
-from app.pipeline import BriefAnalysisPipeline, BriefAnalysisPipelineError
+from app.pipeline import AssessmentStage, BriefAnalysisPipeline, BriefAnalysisPipelineError
+from app.schemas import AIContext, AssessmentResult, BriefAnalysisResult
+
+
+def print_traffic_light_diagnostics(result: AssessmentResult) -> None:
+    """Print CLI-only traffic-light diagnostics without changing public JSON."""
+    traffic_light = result.traffic_light
+    print("\n[TRAFFIC LIGHT DIAGNOSTICS]", file=sys.stderr)
+    print(f"status={traffic_light.status.value}", file=sys.stderr)
+    print(f"direction={traffic_light.direction}", file=sys.stderr)
+    print(f"specialization={traffic_light.specialization}", file=sys.stderr)
+    if not traffic_light.matches:
+        print("matches: []", file=sys.stderr)
+        return
+
+    print("matches:", file=sys.stderr)
+    for match in traffic_light.matches:
+        print(f"  - task={match.task}", file=sys.stderr)
+        print(f"    matched_rule={match.matched_rule}", file=sys.stderr)
+        print(f"    status={match.status.value}", file=sys.stderr)
+        print(f"    reason={match.reason}", file=sys.stderr)
+
+
+class TrafficLightDiagnosticsStage:
+    """CLI-only diagnostics hook that does not modify pipeline context."""
+
+    def run_context(self, context: AIContext) -> AIContext:
+        if context.assessment_result is not None:
+            print_traffic_light_diagnostics(context.assessment_result)
+        return context
+
+
+def add_traffic_light_diagnostics_stage(pipeline: BriefAnalysisPipeline) -> None:
+    """Insert CLI-only traffic-light diagnostics right after assessment."""
+    pipeline.insert_stage_after(AssessmentStage, TrafficLightDiagnosticsStage())
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -71,7 +105,13 @@ def run(argv: Sequence[str] | None = None) -> int:
             llm_client,
             settings=settings,
         )
-        result = pipeline.analyze(brief_input)
+        add_traffic_light_diagnostics_stage(pipeline)
+        context = pipeline.run_context(brief_input)
+        if context.assessment_result is None:
+            raise BriefAnalysisPipelineError("Pipeline did not produce assessment result")
+        if context.final_response_payload is None:
+            raise BriefAnalysisPipelineError("Pipeline did not produce final payload")
+        result = BriefAnalysisResult.model_validate(context.final_response_payload)
     except (RuntimeError, BriefAnalysisPipelineError) as exc:
         print(f"Pipeline error: {exc}", file=sys.stderr)
         return 1

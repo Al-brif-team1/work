@@ -9,7 +9,12 @@ from unittest.mock import patch
 
 from app.input import BriefInputError, BriefInputFactory, BriefInputNormalizer
 from app.main import run
-from app.schemas import BriefAnalysisResult
+from app.schemas import (
+    AIContext,
+    AssessmentRecommendation,
+    AssessmentResult,
+    BriefAnalysisResult,
+)
 
 
 class TestBriefInputNormalizer(unittest.TestCase):
@@ -114,12 +119,30 @@ class TestBriefCli(unittest.TestCase):
         )
 
         class PipelineStub:
-            def analyze(self, brief_input):
+            def insert_stage_after(self, stage_type, stage):
+                return False
+
+            def run_context(self, brief_input):
                 print(
                     "[ARBITRATION DIAGNOSTICS] result: matched_rule=accept_ready",
                     file=stderr,
                 )
-                return result
+                return (
+                    AIContext.from_brief(brief_input)
+                    .with_assessment_result(
+                        AssessmentResult(
+                            criterion_evaluations=[],
+                            risks=[],
+                            evidence=[],
+                            has_risks=False,
+                            recommendation=AssessmentRecommendation.ready_for_arbitration,
+                        )
+                    )
+                    .with_final_response(
+                        response_text=result.customer_response_draft,
+                        response_payload=result.model_dump(mode="json"),
+                    )
+                )
 
         with (
             patch(

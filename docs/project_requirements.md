@@ -94,7 +94,7 @@
 
 "domain": "Предметная область",
 
-"direction": "development | design | analytics | marketing | ai | education | mixed",
+"direction": "development | design | analytics | marketing | ai | education | mixed | unknown",
 
 "available_materials": ["Данные", "Макеты", "Ссылки"],
 
@@ -124,6 +124,8 @@
 
 }
 ```
+
+`mixed` означает проект на стыке нескольких направлений. `unknown` означает, что направление невозможно надёжно классифицировать в текущей публичной таксономии.
 
 
 

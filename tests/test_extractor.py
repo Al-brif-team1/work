@@ -261,6 +261,27 @@ class TestExtractor(unittest.TestCase):
         )
         self.assertIn("factual extractor", runner.calls[0]["system_prompt"])
 
+    def test_extractor_prompt_defines_explicit_negative_and_future_materials_contract(
+        self,
+    ) -> None:
+        runner = FakeLLMRunner(ExtractedBrief.model_validate(make_valid_extraction()))
+        extractor = Extractor(
+            llm_runner=runner,
+            tracing_client=NoOpTracingClient(),
+        )
+
+        system_prompt = extractor.build_system_prompt(self.brief_input)
+
+        self.assertIsNotNone(system_prompt)
+        assert system_prompt is not None
+        self.assertIn("An explicit negative answer is an explicit fact", system_prompt)
+        self.assertIn("not missing information", system_prompt)
+        self.assertIn("integrations or API access are not required", system_prompt)
+        self.assertIn(
+            "Future-provided materials are not missing information",
+            system_prompt,
+        )
+
     def test_extractor_uses_prompt_manager_render_without_manual_replace(self) -> None:
         source = inspect.getsource(Extractor)
 

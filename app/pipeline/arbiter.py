@@ -92,17 +92,20 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         completeness_result: CompletenessResult,
         risks: list[Risk],
         criterion_evaluations: list[CriterionEvaluation],
+        traffic_light_status: str = "unknown",
     ) -> ArbitrationResult:
         """Выполняет шаг «arbitrate from parts». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         signals = self._build_signals(
             completeness_result=completeness_result,
             risks=risks,
             criterion_evaluations=criterion_evaluations,
+            traffic_light_status=traffic_light_status,
         )
         evidence_map = self._build_evidence_map(
             completeness_result=completeness_result,
             risks=risks,
             criterion_evaluations=criterion_evaluations,
+            traffic_light_status=traffic_light_status,
         )
         diagnostics = self._build_arbitration_diagnostics(
             completeness_result=completeness_result,
@@ -156,6 +159,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             completeness_result=completeness_result,
             risks=assessment_result.risks,
             criterion_evaluations=assessment_result.criterion_evaluations,
+            traffic_light_status=assessment_result.traffic_light.status.value,
         )
 
     def arbitrate_context(self, context: AIContext) -> AIContext:
@@ -306,6 +310,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             "evaluation.risk_detected_count": signals.get(
                 "evaluation.risk_detected_count"
             ),
+            "traffic_light.status": signals.get("traffic_light.status"),
         }
         rules = []
         for rule in self._arbitration.rules:
@@ -475,6 +480,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         completeness_result: CompletenessResult,
         risks: list[Risk],
         criterion_evaluations: list[CriterionEvaluation],
+        traffic_light_status: str = "unknown",
     ) -> dict[str, Any]:
         """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         risk_counts = self._risk_counts(risks)
@@ -524,6 +530,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             "evaluation.risk_detected_count": evaluation_counts[
                 "risk_detected_count"
             ],
+            "traffic_light.status": traffic_light_status,
         }
         return signals
 
@@ -532,6 +539,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
         completeness_result: CompletenessResult,
         risks: list[Risk],
         criterion_evaluations: list[CriterionEvaluation],
+        traffic_light_status: str = "unknown",
     ) -> dict[str, list[str]]:
         """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         evidence_map: dict[str, list[str]] = {
@@ -620,6 +628,9 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
                 criterion_evaluations,
                 {CriterionEvaluationStatus.risk_detected},
             ),
+            "traffic_light.status": [
+                f"Traffic Light status: {traffic_light_status}"
+            ],
         }
         return evidence_map
 
@@ -661,6 +672,7 @@ class DeterministicArbiterStage(BaseStage[AIContext, AIContext]):
             "evaluation.not_met_count",
             "evaluation.insufficient_information_count",
             "evaluation.risk_detected_count",
+            "traffic_light.status",
         }
 
     def _collect_evidence(

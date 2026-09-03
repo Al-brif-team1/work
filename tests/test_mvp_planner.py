@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from app.input import BriefInputFactory
+from app.llm.runner import LLMRunnerProviderError, LLMRunnerTimeoutError
 from app.pipeline import MVPPlannerError, MVPPlannerStage
 from app.schemas import (
     AIContext,
@@ -419,6 +420,109 @@ class TestMVPPlannerStage(unittest.TestCase):
                 make_empty_assessment_result(),
                 make_arbitration_result(DecisionStatus.simplify),
             )
+
+    def test_uses_fallback_when_provider_rate_limit_persists(self) -> None:
+        llm_client = FakeLLMClient(
+            [
+                LLMRunnerProviderError("429 rate limit"),
+                LLMRunnerProviderError("429 rate limit"),
+            ]
+        )
+        planner = MVPPlannerStage(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            model_name="test-model",
+            max_retries=2,
+        )
+
+        result = planner.plan_assessment(
+            make_brief_input(),
+            make_extracted_brief(),
+            make_assessment_result(),
+            make_arbitration_result(DecisionStatus.simplify),
+        )
+
+        self.assertIsNotNone(result.plan)
+        assert result.plan is not None
+        self.assertEqual(result.plan.core_goal, "Build a customer portal")
+        self.assertEqual(result.plan.keep, ["Implement authentication"])
+        self.assertTrue(result.plan.simplify)
+        self.assertEqual(result.plan.mvp_scope, ["Implement authentication"])
+        self.assertIn("authentication and reporting", result.plan.remove)
+        self.assertTrue(result.plan.rationale)
+        self.assertTrue(result.technical_info.llm_invoked)
+        self.assertEqual(result.technical_info.attempts, 2)
+        self.assertIn(
+            "deterministic MVP fallback",
+            result.technical_info.recovered_errors[0],
+        )
+
+    def test_uses_fallback_when_timeout_persists(self) -> None:
+        llm_client = FakeLLMClient(
+            [
+                LLMRunnerTimeoutError("LLM request timed out"),
+                LLMRunnerTimeoutError("LLM request timed out"),
+            ]
+        )
+        planner = MVPPlannerStage(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            model_name="test-model",
+            max_retries=2,
+        )
+
+        result = planner.plan_assessment(
+            make_brief_input(),
+            make_extracted_brief(),
+            make_empty_assessment_result(),
+            make_arbitration_result(DecisionStatus.simplify),
+        )
+
+        self.assertIsNotNone(result.plan)
+        assert result.plan is not None
+        self.assertEqual(result.plan.core_goal, "Build a customer portal")
+        self.assertEqual(result.plan.keep, ["Implement authentication"])
+        self.assertEqual(result.technical_info.attempts, 2)
+
+    def test_does_not_fallback_when_structured_output_validation_fails(self) -> None:
+        llm_client = FakeLLMClient(
+            [
+                {"keep": [], "remove": [], "simplify": [], "mvp_scope": [], "rationale": []},
+                {"keep": [], "remove": [], "simplify": [], "mvp_scope": [], "rationale": []},
+            ]
+        )
+        planner = MVPPlannerStage(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            model_name="test-model",
+            max_retries=2,
+        )
+
+        with self.assertRaises(MVPPlannerError):
+            planner.plan_assessment(
+                make_brief_input(),
+                make_extracted_brief(),
+                make_empty_assessment_result(),
+                make_arbitration_result(DecisionStatus.simplify),
+            )
+
+    def test_does_not_fallback_when_context_is_invalid(self) -> None:
+        llm_client = FakeLLMClient([])
+        planner = MVPPlannerStage(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            model_name="test-model",
+        )
+        context = (
+            AIContext.from_brief(make_brief_input())
+            .with_assessment_result(make_assessment_result())
+            .with_arbitration_result(make_arbitration_result(DecisionStatus.simplify))
+        )
+
+        with self.assertRaises(MVPPlannerError):
+            planner.run_context(context)
+
+        self.assertEqual(len(llm_client.calls), 0)
 
 
 if __name__ == "__main__":

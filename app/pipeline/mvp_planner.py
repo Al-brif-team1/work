@@ -6,7 +6,12 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from app.llm.runner import LLMRunner
+from app.llm.runner import (
+    LLMRunner,
+    LLMRunnerProviderError,
+    LLMRunnerStructuredOutputError,
+    LLMRunnerTimeoutError,
+)
 from app.pipeline.base import BaseLLMStage
 from app.prompts import PromptManager
 from app.schemas import (
@@ -85,17 +90,27 @@ class MVPPlannerStage(BaseLLMStage):
                 ),
             )
 
-        return self._run_plan(
-            brief_input=brief_input,
-            extracted_brief=extracted_brief,
-            risk_analysis_result=self._risk_analysis_prompt_section(
-                assessment_result
-            ),
-            evaluation_result=self._evaluation_prompt_section(assessment_result),
-            arbitration_result=arbitration_result,
-            risk_count=len(assessment_result.risks),
-            criterion_count=len(assessment_result.criterion_evaluations),
-        )
+        try:
+            return self._run_plan(
+                brief_input=brief_input,
+                extracted_brief=extracted_brief,
+                risk_analysis_result=self._risk_analysis_prompt_section(
+                    assessment_result
+                ),
+                evaluation_result=self._evaluation_prompt_section(assessment_result),
+                arbitration_result=arbitration_result,
+                risk_count=len(assessment_result.risks),
+                criterion_count=len(assessment_result.criterion_evaluations),
+            )
+        except MVPPlannerError as exc:
+            if not self._is_recoverable_external_failure(exc):
+                raise
+            return self._build_fallback_result(
+                extracted_brief=extracted_brief,
+                assessment_result=assessment_result,
+                arbitration_result=arbitration_result,
+                error=exc,
+            )
 
     def plan_context(self, context: AIContext) -> AIContext:
         """Выполняет шаг «plan context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
@@ -131,6 +146,157 @@ class MVPPlannerStage(BaseLLMStage):
             raise ValueError("mvp_scope must not be empty")
         if not plan.rationale:
             raise ValueError("rationale must not be empty")
+
+    def _build_fallback_result(
+        self,
+        *,
+        extracted_brief: ExtractedBrief,
+        assessment_result: AssessmentResult,
+        arbitration_result: ArbitrationResult,
+        error: MVPPlannerError,
+    ) -> MVPPlanningResult:
+        plan = MVPPlan(
+            core_goal=self._fallback_core_goal(extracted_brief),
+            keep=self._fallback_keep(extracted_brief),
+            remove=self._fallback_remove(assessment_result),
+            simplify=[
+                (
+                    "Сократить первую версию до базового MVP на основе уже "
+                    "описанной цели и подтвержденных задач."
+                )
+            ],
+            mvp_scope=self._fallback_scope(extracted_brief),
+            rationale=[
+                (
+                    "Арбитр уже выбрал SIMPLIFY; используется детерминированный "
+                    "сокращенный план, потому что LLM-провайдер временно "
+                    "недоступен."
+                )
+            ],
+        )
+        return MVPPlanningResult(
+            plan=plan,
+            technical_info=MVPPlanningTechnicalInfo(
+                llm_invoked=True,
+                attempts=self._max_retries,
+                prompt_name=self.prompt_name,
+                trace_enabled=not isinstance(self._tracing_client, NoOpTracingClient),
+                trace_name="mvp_planner.brief",
+                model_name=self.model_name,
+                skipped_reason=None,
+                raw_response=None,
+                recovered_errors=[
+                    "deterministic MVP fallback after recoverable external LLM failure",
+                    str(error),
+                ],
+            ),
+        )
+
+    @classmethod
+    def _fallback_core_goal(cls, extracted_brief: ExtractedBrief) -> str:
+        return (
+            cls._fact_text(extracted_brief.project_goal)
+            or cls._fact_text(extracted_brief.expected_result)
+            or "Сокращенная первая версия проекта"
+        )
+
+    @classmethod
+    def _fallback_keep(cls, extracted_brief: ExtractedBrief) -> list[str]:
+        tasks = cls._fact_texts(extracted_brief.tasks)
+        if tasks:
+            return tasks[:3]
+        expected_result = cls._fact_text(extracted_brief.expected_result)
+        if expected_result:
+            return [expected_result]
+        return [cls._fallback_core_goal(extracted_brief)]
+
+    @classmethod
+    def _fallback_scope(cls, extracted_brief: ExtractedBrief) -> list[str]:
+        tasks = cls._fact_texts(extracted_brief.tasks)
+        if tasks:
+            return tasks[:2]
+        return cls._fallback_keep(extracted_brief)[:2]
+
+    @classmethod
+    def _fallback_remove(cls, assessment_result: AssessmentResult) -> list[str]:
+        values: list[str] = []
+        for risk in assessment_result.risks:
+            if risk.type != "scope_too_large":
+                continue
+            evidence = getattr(risk, "evidence", None) or []
+            for item in evidence:
+                if isinstance(item, str) and item.strip():
+                    values.append(item.strip())
+        return cls._deduplicate(values)[:3]
+
+    @staticmethod
+    def _fact_text(fact: object) -> str:
+        value = getattr(fact, "value", None)
+        if not isinstance(value, str):
+            return ""
+        return value.strip()
+
+    @classmethod
+    def _fact_texts(cls, facts: list[object]) -> list[str]:
+        return cls._deduplicate(
+            [value for fact in facts if (value := cls._fact_text(fact))]
+        )
+
+    @staticmethod
+    def _deduplicate(values: list[str]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            normalized = value.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            result.append(normalized)
+        return result
+
+    @classmethod
+    def _is_recoverable_external_failure(cls, exc: MVPPlannerError) -> bool:
+        chain = cls._exception_chain(exc)
+        if any(isinstance(item, LLMRunnerStructuredOutputError) for item in chain):
+            return False
+        if any(isinstance(item, LLMRunnerTimeoutError) for item in chain):
+            return True
+        provider_errors = [
+            item for item in chain if isinstance(item, LLMRunnerProviderError)
+        ]
+        return bool(provider_errors) and any(
+            cls._looks_like_external_provider_failure(item)
+            for item in provider_errors
+        )
+
+    @staticmethod
+    def _exception_chain(exc: BaseException) -> list[BaseException]:
+        result: list[BaseException] = []
+        current: BaseException | None = exc
+        while current is not None:
+            result.append(current)
+            current = current.__cause__ or current.__context__
+        return result
+
+    @staticmethod
+    def _looks_like_external_provider_failure(exc: BaseException) -> bool:
+        message = str(exc).lower()
+        external_signals = (
+            "429",
+            "rate limit",
+            "rate_limit",
+            "too many requests",
+            "timed out",
+            "timeout",
+            "transport",
+            "connection",
+            "connect",
+            "network",
+            "service unavailable",
+            "unavailable",
+            "overloaded",
+        )
+        return any(signal in message for signal in external_signals)
 
     def _build_user_prompt(
         self,

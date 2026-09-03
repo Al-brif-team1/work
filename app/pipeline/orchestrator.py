@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Any, Protocol
 
-from app.config import CriteriaConfig, Settings, get_criteria_config
+from app.config import (
+    CriteriaConfig,
+    Settings,
+    TrafficLightConfig,
+    get_criteria_config,
+    get_traffic_light_config,
+)
 from app.input import BriefInputFactory
 from app.llm.client import LLMClient
 from app.llm.runner import LLMRunner
@@ -54,6 +60,7 @@ class BriefAnalysisPipeline:
         *,
         retriever: AssessmentRetriever | None = None,
         criteria_config: CriteriaConfig | None = None,
+        traffic_light_config: TrafficLightConfig | None = None,
         tracing_client: TracingClient | None = None,
         prompt_manager: PromptManager | None = None,
         max_retries: int = 2,
@@ -72,6 +79,7 @@ class BriefAnalysisPipeline:
 
         tracing = tracing_client or get_tracing_client()
         config = criteria_config or get_criteria_config()
+        traffic_light = traffic_light_config or get_traffic_light_config()
         prompts = prompt_manager or PromptManager()
         llm_runner = LLMRunner(
             llm_client=llm_client,
@@ -101,6 +109,7 @@ class BriefAnalysisPipeline:
                     model_name=model_name,
                     retriever=retriever,
                     criteria_config=config,
+                    traffic_light_config=traffic_light,
                 ),
                 DeterministicArbiterStage(
                     criteria_config=config,
@@ -127,6 +136,14 @@ class BriefAnalysisPipeline:
     def analyze_text(self, text: str) -> BriefAnalysisResult:
         """Выполняет шаг «analyze text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.analyze(self._input_factory.from_text(text))
+
+    def insert_stage_after(self, stage_type: type[Any], stage: ContextStage) -> bool:
+        """Insert a stage after the first existing stage of the requested type."""
+        for index, existing_stage in enumerate(self._stages):
+            if isinstance(existing_stage, stage_type):
+                self._stages.insert(index + 1, stage)
+                return True
+        return False
 
     def analyze(self, brief_input: BriefInput) -> BriefAnalysisResult:
         """Выполняет шаг «analyze». Документация описывает назначение метода, а сама логика остается в коде ниже."""

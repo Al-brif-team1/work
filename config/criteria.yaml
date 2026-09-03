@@ -490,6 +490,15 @@ evaluation:
               - restricted_topic
               - out_of_scope_request
               - production_criticality
+      - key: reject_by_traffic_light_red
+        title: Reject by traffic light red
+        description: Reject when the Traffic Light marks the requested work as red.
+        status: REJECT
+        confidence: 1.0
+        conditions:
+          - field: traffic_light.status
+            operator: eq
+            value: red
       - key: clarify_blocking_missing_information
         title: Clarify blocking missing information
         description: Ask for clarification when blocking customer-facing information is missing.
@@ -537,6 +546,24 @@ evaluation:
           - field: risk.unknown_type_count
             operator: gt
             value: 0
+      - key: mentor_review_traffic_light_unknown
+        title: Mentor review traffic light unknown
+        description: Send to mentor review when the Traffic Light cannot classify the requested work.
+        status: MENTOR_REVIEW
+        confidence: 0.75
+        conditions:
+          - field: traffic_light.status
+            operator: eq
+            value: unknown
+      - key: accept_with_traffic_light_yellow
+        title: Accept with traffic light yellow
+        description: Accept with clarifications when the Traffic Light marks the requested work as yellow.
+        status: ACCEPT_WITH_CLARIFICATIONS
+        confidence: 0.9
+        conditions:
+          - field: traffic_light.status
+            operator: eq
+            value: yellow
       - key: accept_with_missing_optional_information
         title: Accept with missing optional information
         description: Accept the brief while asking for optional customer-facing information that is missing.

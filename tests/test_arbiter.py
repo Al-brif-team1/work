@@ -27,6 +27,8 @@ from app.schemas import (
     FactStatus,
     Risk,
     RiskSeverity,
+    TrafficLightResult,
+    TrafficLightStatus,
 )
 
 
@@ -155,6 +157,15 @@ def write_criteria_yaml(path: Path) -> None:
                           - restricted_topic
                           - out_of_scope_request
                           - production_criticality
+                  - key: reject_by_traffic_light_red
+                    title: Reject by traffic light red
+                    description: Reject when the Traffic Light marks the requested work as red.
+                    status: REJECT
+                    confidence: 1.0
+                    conditions:
+                      - field: traffic_light.status
+                        operator: eq
+                        value: red
                   - key: clarify_blocking_missing_information
                     title: Clarify blocking missing information
                     description: Ask for clarification when blocking customer-facing information is missing.
@@ -202,6 +213,24 @@ def write_criteria_yaml(path: Path) -> None:
                       - field: risk.unknown_type_count
                         operator: gt
                         value: 0
+                  - key: mentor_review_traffic_light_unknown
+                    title: Mentor review traffic light unknown
+                    description: Send to mentor review when the Traffic Light cannot classify the requested work.
+                    status: MENTOR_REVIEW
+                    confidence: 0.75
+                    conditions:
+                      - field: traffic_light.status
+                        operator: eq
+                        value: unknown
+                  - key: accept_with_traffic_light_yellow
+                    title: Accept with traffic light yellow
+                    description: Accept with clarifications when the Traffic Light marks the requested work as yellow.
+                    status: ACCEPT_WITH_CLARIFICATIONS
+                    confidence: 0.9
+                    conditions:
+                      - field: traffic_light.status
+                        operator: eq
+                        value: yellow
                   - key: accept_with_missing_optional_information
                     title: Accept with missing optional information
                     description: Accept the brief while asking for optional customer-facing information that is missing.
@@ -343,6 +372,7 @@ def make_assessment_result(
     severities: list[RiskSeverity],
     statuses: list[CriterionEvaluationStatus],
     risk_types: list[str] | None = None,
+    traffic_light_status: TrafficLightStatus = TrafficLightStatus.green,
 ) -> AssessmentResult:
     """Выполняет шаг «make assessment result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     risks = [
@@ -379,6 +409,7 @@ def make_assessment_result(
         has_risks=bool(risks),
         recommendation=AssessmentRecommendation.ready_for_arbitration,
         summary=None,
+        traffic_light=TrafficLightResult(status=traffic_light_status),
         technical_info=AssessmentTechnicalInfo(
             attempts=1,
             prompt_name="assessment.md",
@@ -441,11 +472,14 @@ class TestDeterministicArbiterStage(unittest.TestCase):
             [rule.key for rule in self.arbiter._arbitration.rules],
             [
                 "reject_by_business_risk",
+                "reject_by_traffic_light_red",
                 "clarify_blocking_missing_information",
                 "clarify_blocking_uncertainty",
                 "simplify_scope_too_large",
                 "mentor_review_expertise_required",
                 "mentor_review_unknown_risk_type",
+                "mentor_review_traffic_light_unknown",
+                "accept_with_traffic_light_yellow",
                 "accept_with_missing_optional_information",
                 "accept_with_optional_uncertainty",
                 "accept_ready",
@@ -851,6 +885,237 @@ class TestDeterministicArbiterStage(unittest.TestCase):
             "completeness.optional_clarification_count",
             self.arbiter._supported_signals,
         )
+
+    def test_traffic_light_red_status_is_available_as_signal(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[],
+                statuses=[CriterionEvaluationStatus.met],
+                traffic_light_status=TrafficLightStatus.red,
+            ),
+        )
+
+        self.assertEqual(result.metadata["signals"]["traffic_light.status"], "red")
+
+    def test_traffic_light_green_status_is_available_as_signal(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[],
+                statuses=[CriterionEvaluationStatus.met],
+                traffic_light_status=TrafficLightStatus.green,
+            ),
+        )
+
+        self.assertEqual(result.metadata["signals"]["traffic_light.status"], "green")
+
+    def test_traffic_light_yellow_status_is_available_as_signal(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[],
+                statuses=[CriterionEvaluationStatus.met],
+                traffic_light_status=TrafficLightStatus.yellow,
+            ),
+        )
+
+        self.assertEqual(result.metadata["signals"]["traffic_light.status"], "yellow")
+
+    def test_traffic_light_unknown_status_is_available_as_signal(self) -> None:
+        result = self.arbiter.arbitrate_assessment(
+            make_completeness_result(complete=True),
+            make_assessment_result(
+                severities=[],
+                statuses=[CriterionEvaluationStatus.met],
+                traffic_light_status=TrafficLightStatus.unknown,
+            ),
+        )
+
+        self.assertEqual(result.metadata["signals"]["traffic_light.status"], "unknown")
+
+    def test_traffic_light_status_is_supported_in_config_conditions(self) -> None:
+        self.criteria_path.write_text(
+            self.criteria_path.read_text(encoding="utf-8").replace(
+                "field: risk.unknown_type_count",
+                "field: traffic_light.status",
+                1,
+            ),
+            encoding="utf-8",
+        )
+
+        stage = DeterministicArbiterStage(criteria_path=self.criteria_path)
+
+        self.assertIn("traffic_light.status", stage._supported_signals)
+
+    def test_traffic_light_rules_follow_configured_priority(self) -> None:
+        scenarios = [
+            {
+                "name": "red_good_brief",
+                "traffic_light_status": TrafficLightStatus.red,
+                "complete": True,
+                "missing": 0,
+                "optional_missing": 0,
+                "risk_types": None,
+                "severities": [],
+                "expected_status": DecisionStatus.reject,
+                "expected_rule": "reject_by_traffic_light_red",
+            },
+            {
+                "name": "red_blocking_missing",
+                "traffic_light_status": TrafficLightStatus.red,
+                "complete": False,
+                "missing": 1,
+                "optional_missing": 0,
+                "risk_types": None,
+                "severities": [],
+                "expected_status": DecisionStatus.reject,
+                "expected_rule": "reject_by_traffic_light_red",
+            },
+            {
+                "name": "red_scope_too_large",
+                "traffic_light_status": TrafficLightStatus.red,
+                "complete": True,
+                "missing": 0,
+                "optional_missing": 0,
+                "risk_types": ["scope_too_large"],
+                "severities": [RiskSeverity.high],
+                "expected_status": DecisionStatus.reject,
+                "expected_rule": "reject_by_traffic_light_red",
+            },
+            {
+                "name": "red_production_criticality",
+                "traffic_light_status": TrafficLightStatus.red,
+                "complete": True,
+                "missing": 0,
+                "optional_missing": 0,
+                "risk_types": ["production_criticality"],
+                "severities": [RiskSeverity.critical],
+                "expected_status": DecisionStatus.reject,
+                "expected_rule": "reject_by_business_risk",
+            },
+            {
+                "name": "yellow_good_brief",
+                "traffic_light_status": TrafficLightStatus.yellow,
+                "complete": True,
+                "missing": 0,
+                "optional_missing": 0,
+                "risk_types": None,
+                "severities": [],
+                "expected_status": DecisionStatus.accept_with_clarifications,
+                "expected_rule": "accept_with_traffic_light_yellow",
+            },
+            {
+                "name": "yellow_blocking_missing",
+                "traffic_light_status": TrafficLightStatus.yellow,
+                "complete": False,
+                "missing": 1,
+                "optional_missing": 0,
+                "risk_types": None,
+                "severities": [],
+                "expected_status": DecisionStatus.clarify,
+                "expected_rule": "clarify_blocking_missing_information",
+            },
+            {
+                "name": "yellow_scope_too_large",
+                "traffic_light_status": TrafficLightStatus.yellow,
+                "complete": True,
+                "missing": 0,
+                "optional_missing": 0,
+                "risk_types": ["scope_too_large"],
+                "severities": [RiskSeverity.high],
+                "expected_status": DecisionStatus.simplify,
+                "expected_rule": "simplify_scope_too_large",
+            },
+            {
+                "name": "unknown_good_brief",
+                "traffic_light_status": TrafficLightStatus.unknown,
+                "complete": True,
+                "missing": 0,
+                "optional_missing": 0,
+                "risk_types": None,
+                "severities": [],
+                "expected_status": DecisionStatus.mentor_review,
+                "expected_rule": "mentor_review_traffic_light_unknown",
+            },
+            {
+                "name": "unknown_blocking_missing",
+                "traffic_light_status": TrafficLightStatus.unknown,
+                "complete": False,
+                "missing": 1,
+                "optional_missing": 0,
+                "risk_types": None,
+                "severities": [],
+                "expected_status": DecisionStatus.clarify,
+                "expected_rule": "clarify_blocking_missing_information",
+            },
+            {
+                "name": "unknown_scope_too_large",
+                "traffic_light_status": TrafficLightStatus.unknown,
+                "complete": True,
+                "missing": 0,
+                "optional_missing": 0,
+                "risk_types": ["scope_too_large"],
+                "severities": [RiskSeverity.high],
+                "expected_status": DecisionStatus.simplify,
+                "expected_rule": "simplify_scope_too_large",
+            },
+            {
+                "name": "green_good_brief",
+                "traffic_light_status": TrafficLightStatus.green,
+                "complete": True,
+                "missing": 0,
+                "optional_missing": 0,
+                "risk_types": None,
+                "severities": [],
+                "expected_status": DecisionStatus.accept,
+                "expected_rule": "accept_ready",
+            },
+            {
+                "name": "green_scope_too_large",
+                "traffic_light_status": TrafficLightStatus.green,
+                "complete": True,
+                "missing": 0,
+                "optional_missing": 0,
+                "risk_types": ["scope_too_large"],
+                "severities": [RiskSeverity.high],
+                "expected_status": DecisionStatus.simplify,
+                "expected_rule": "simplify_scope_too_large",
+            },
+            {
+                "name": "green_optional_missing",
+                "traffic_light_status": TrafficLightStatus.green,
+                "complete": True,
+                "missing": 0,
+                "optional_missing": 1,
+                "risk_types": None,
+                "severities": [],
+                "expected_status": DecisionStatus.accept_with_clarifications,
+                "expected_rule": "accept_with_missing_optional_information",
+            },
+        ]
+
+        for scenario in scenarios:
+            with self.subTest(scenario=scenario["name"]):
+                result = self.arbiter.arbitrate_assessment(
+                    make_completeness_result(
+                        complete=scenario["complete"],
+                        missing=scenario["missing"],
+                        optional_missing=scenario["optional_missing"],
+                    ),
+                    make_assessment_result(
+                        severities=scenario["severities"],
+                        statuses=[CriterionEvaluationStatus.met],
+                        risk_types=scenario["risk_types"],
+                        traffic_light_status=scenario["traffic_light_status"],
+                    ),
+                )
+
+                self.assertEqual(result.final_status, scenario["expected_status"])
+                self.assertEqual(
+                    result.triggered_rules[0].rule_key,
+                    scenario["expected_rule"],
+                )
 
     def test_clarify_status_for_missing_information(self) -> None:
         result = self.arbiter.arbitrate_assessment(

@@ -229,6 +229,98 @@ def public_direction(context: AIContext) -> str:
     return updated.final_response_payload["extracted_fields"]["direction"]
 
 
+def public_summary(context: AIContext) -> str:
+    """Возвращает summary из public JSON payload."""
+    updated = ResponseWriterStage().run_context(context)
+    return updated.final_response_payload["summary"]
+
+
+def public_reasons(context: AIContext) -> list[str]:
+    """Возвращает assessment.reasons из public JSON payload."""
+    updated = ResponseWriterStage().run_context(context)
+    return updated.final_response_payload["assessment"]["reasons"]
+
+
+def public_available_materials(context: AIContext) -> list[str]:
+    """Возвращает available_materials из public JSON payload."""
+    updated = ResponseWriterStage().run_context(context)
+    return updated.final_response_payload["extracted_fields"]["available_materials"]
+
+
+def context_with_assessment_summary(
+    *,
+    status: DecisionStatus,
+    assessment_summary: str,
+) -> AIContext:
+    """Собирает контекст с заданным pre-arbitration summary."""
+    context = make_context(status)
+    assessment = context.assessment_result
+    assert assessment is not None
+    context = context.with_assessment_result(
+        assessment.model_copy(update={"summary": assessment_summary})
+    )
+    if status is DecisionStatus.simplify:
+        context = context.with_mvp_planning_result(make_mvp_planning_result())
+    return context
+
+
+def context_with_reason_inputs(
+    *,
+    status: DecisionStatus,
+    criterion_status: CriterionEvaluationStatus,
+    explanation: str,
+) -> AIContext:
+    """Собирает контекст с заданным criterion explanation."""
+    context = make_context(status)
+    assessment = context.assessment_result
+    assert assessment is not None
+    context = context.with_assessment_result(
+        assessment.model_copy(
+            update={
+                "criterion_evaluations": [
+                    CriterionEvaluation(
+                        criterion="student_fit",
+                        criterion_title="Student project fit",
+                        status=criterion_status,
+                        explanation=explanation,
+                    )
+                ],
+            }
+        )
+    )
+    if status is DecisionStatus.simplify:
+        context = context.with_mvp_planning_result(make_mvp_planning_result())
+    return context
+
+
+def context_with_available_material_inputs(
+    *,
+    materials: list[str] | None = None,
+    existing_resources: list[str] | None = None,
+    integrations: list[str] | None = None,
+) -> AIContext:
+    """Собирает контекст с заданными материалами, ресурсами и интеграциями."""
+    context = make_context()
+    assert context.extracted_brief is not None
+    extracted = context.extracted_brief.model_copy(
+        update={
+            "materials": [
+                ExtractedFact(status=FactStatus.explicit, value=value)
+                for value in (materials or [])
+            ],
+            "existing_resources": [
+                ExtractedFact(status=FactStatus.explicit, value=value)
+                for value in (existing_resources or [])
+            ],
+            "integrations": [
+                ExtractedFact(status=FactStatus.explicit, value=value)
+                for value in (integrations or [])
+            ],
+        }
+    )
+    return context.with_extracted_brief(extracted)
+
+
 def make_public_payload() -> dict:
     """Возвращает минимальный валидный public JSON payload для contract-тестов."""
     return {
@@ -457,9 +549,17 @@ class TestPublicJsonContract(unittest.TestCase):
                 with self.assertRaises(ValidationError):
                     BriefAnalysisResult.model_validate(payload)
 
-    def test_public_schema_rejects_invalid_direction(self) -> None:
+    def test_public_schema_accepts_unknown_direction(self) -> None:
         payload = make_public_payload()
         payload["extracted_fields"]["direction"] = "unknown"
+
+        result = BriefAnalysisResult.model_validate(payload)
+
+        self.assertEqual(result.extracted_fields.direction, "unknown")
+
+    def test_public_schema_rejects_invalid_direction(self) -> None:
+        payload = make_public_payload()
+        payload["extracted_fields"]["direction"] = "other"
 
         with self.assertRaises(ValidationError):
             BriefAnalysisResult.model_validate(payload)
@@ -507,6 +607,193 @@ class TestResponseWriterStage(unittest.TestCase):
 
     def test_public_direction_accepts_canonical_development(self) -> None:
         self.assertEqual(public_direction(make_context()), "development")
+
+    def test_public_summary_for_mentor_review_ignores_accept_assessment_summary(
+        self,
+    ) -> None:
+        summary = public_summary(
+            context_with_assessment_summary(
+                status=DecisionStatus.mentor_review,
+                assessment_summary=(
+                    "Проект полностью соответствует возможностям студенческой команды."
+                ),
+            )
+        )
+
+        self.assertIn("требуется оценка ментора", summary)
+        self.assertNotIn("полностью соответствует", summary)
+        self.assertNotIn("готов", summary)
+
+    def test_public_summary_for_reject_ignores_mentor_review_assessment_summary(
+        self,
+    ) -> None:
+        summary = public_summary(
+            context_with_assessment_summary(
+                status=DecisionStatus.reject,
+                assessment_summary="Проект можно реализовать после консультации ментора.",
+            )
+        )
+
+        self.assertIn("не рекомендуется принимать", summary)
+        self.assertNotIn("можно реализовать", summary)
+        self.assertNotIn("консультации ментора", summary)
+
+    def test_public_summary_for_accept_ignores_stale_arbitration_wording(
+        self,
+    ) -> None:
+        summary = public_summary(
+            context_with_assessment_summary(
+                status=DecisionStatus.accept,
+                assessment_summary="Проект готов к передаче арбитражу.",
+            )
+        )
+
+        self.assertIn("можно принять", summary)
+        self.assertNotIn("готов к передаче арбитражу", summary)
+        self.assertNotIn("требуется оценка", summary)
+
+    def test_public_summary_reflects_every_final_arbitration_status(self) -> None:
+        cases = {
+            DecisionStatus.accept: "можно принять",
+            DecisionStatus.accept_with_clarifications: "уточнить детали",
+            DecisionStatus.clarify: "обязательную информацию",
+            DecisionStatus.simplify: "требует упрощения",
+            DecisionStatus.mentor_review: "требуется оценка ментора",
+            DecisionStatus.reject: "не рекомендуется принимать",
+        }
+
+        for status, expected_text in cases.items():
+            with self.subTest(status=status):
+                summary = public_summary(
+                    context_with_assessment_summary(
+                        status=status,
+                        assessment_summary="Проект готов к передаче арбитражу.",
+                    )
+                )
+
+                self.assertIn(expected_text, summary)
+                self.assertNotIn("готов к передаче арбитражу", summary)
+
+    def test_public_reasons_for_mentor_review_ignore_positive_met_explanation(
+        self,
+    ) -> None:
+        reasons = public_reasons(
+            context_with_reason_inputs(
+                status=DecisionStatus.mentor_review,
+                criterion_status=CriterionEvaluationStatus.met,
+                explanation=(
+                    "Проект полностью соответствует возможностям студенческой команды."
+                ),
+            )
+        )
+        serialized = "\n".join(reasons)
+
+        self.assertIn("требуется дополнительная оценка ментора", serialized)
+        self.assertNotIn("полностью соответствует", serialized)
+
+    def test_public_reasons_for_reject_ignore_positive_met_explanations(self) -> None:
+        reasons = public_reasons(
+            context_with_reason_inputs(
+                status=DecisionStatus.reject,
+                criterion_status=CriterionEvaluationStatus.met,
+                explanation="Все критерии выполнены, проект подходит студентам.",
+            )
+        )
+        serialized = "\n".join(reasons)
+
+        self.assertIn("не рекомендуется принимать", serialized)
+        self.assertNotIn("Все критерии выполнены", serialized)
+        self.assertNotIn("подходит студентам", serialized)
+
+    def test_public_reasons_for_simplify_ignore_positive_scope_explanation(self) -> None:
+        reasons = public_reasons(
+            context_with_reason_inputs(
+                status=DecisionStatus.simplify,
+                criterion_status=CriterionEvaluationStatus.met,
+                explanation="Объём проекта реалистичен.",
+            )
+        )
+        serialized = "\n".join(reasons)
+
+        self.assertIn("требует сокращения", serialized)
+        self.assertNotIn("Объём проекта реалистичен", serialized)
+
+    def test_public_reasons_for_clarify_explain_required_information(self) -> None:
+        reasons = public_reasons(
+            context_with_reason_inputs(
+                status=DecisionStatus.clarify,
+                criterion_status=CriterionEvaluationStatus.met,
+                explanation="Бриф полностью заполнен.",
+            )
+        )
+        serialized = "\n".join(reasons)
+
+        self.assertIn("не хватает обязательной информации", serialized)
+        self.assertNotIn("Бриф полностью заполнен", serialized)
+
+    def test_public_reasons_for_accept_with_clarifications_mention_clarifications(
+        self,
+    ) -> None:
+        reasons = public_reasons(
+            context_with_reason_inputs(
+                status=DecisionStatus.accept_with_clarifications,
+                criterion_status=CriterionEvaluationStatus.met,
+                explanation="Цель описана.",
+            )
+        )
+        serialized = "\n".join(reasons)
+
+        self.assertIn("необходимо уточнить", serialized)
+
+    def test_public_reasons_for_accept_include_positive_met_explanations(self) -> None:
+        reasons = public_reasons(
+            context_with_reason_inputs(
+                status=DecisionStatus.accept,
+                criterion_status=CriterionEvaluationStatus.met,
+                explanation="Цель описана.",
+            )
+        )
+        serialized = "\n".join(reasons)
+
+        self.assertIn("блокирующих ограничений", serialized)
+        self.assertIn("Цель описана.", reasons)
+
+    def test_public_available_materials_excludes_negative_integrations(self) -> None:
+        materials = public_available_materials(
+            context_with_available_material_inputs(
+                materials=["Исходные тексты и документы"],
+                existing_resources=["Текущий сайт"],
+                integrations=["Внешние API не требуются"],
+            )
+        )
+
+        self.assertEqual(
+            materials,
+            ["Исходные тексты и документы", "Текущий сайт"],
+        )
+        self.assertNotIn("Внешние API не требуются", materials)
+
+    def test_public_available_materials_excludes_short_negative_integrations(
+        self,
+    ) -> None:
+        materials = public_available_materials(
+            context_with_available_material_inputs(
+                materials=["Исходные тексты и документы"],
+                integrations=["Не требуются"],
+            )
+        )
+
+        self.assertEqual(materials, ["Исходные тексты и документы"])
+        self.assertNotIn("Не требуются", materials)
+
+    def test_public_available_materials_keeps_existing_resources(self) -> None:
+        materials = public_available_materials(
+            context_with_available_material_inputs(
+                existing_resources=["Текущий сайт"],
+            )
+        )
+
+        self.assertEqual(materials, ["Текущий сайт"])
 
     def test_public_direction_uses_config_aliases(self) -> None:
         context = context_with_direction_inputs(
@@ -571,6 +858,22 @@ class TestResponseWriterStage(unittest.TestCase):
 
         self.assertEqual(public_direction(context), "development")
 
+    def test_public_direction_keeps_desktop_app_with_interface_as_development(
+        self,
+    ) -> None:
+        context = context_with_direction_inputs(
+            project_direction="software product",
+            project_type="software",
+            project_goal=(
+                "Разработать локальное десктопное приложение для управления "
+                "световыми сценами"
+            ),
+            tasks=["Сделать простое приложение с интерфейсом оператора"],
+            expected_result="Desktop application with simple UI",
+        )
+
+        self.assertEqual(public_direction(context), "development")
+
     def test_public_direction_classifies_ux_ui_redesign_as_design(self) -> None:
         context = context_with_direction_inputs(
             project_direction="customer experience",
@@ -581,6 +884,22 @@ class TestResponseWriterStage(unittest.TestCase):
         )
 
         self.assertEqual(public_direction(context), "design")
+
+    def test_public_direction_classifies_independent_development_and_design_as_mixed(
+        self,
+    ) -> None:
+        context = context_with_direction_inputs(
+            project_direction="product improvement",
+            project_type="product",
+            project_goal="Build a web portal for clients",
+            tasks=[
+                "Develop backend API for the portal",
+                "Prepare UX UI redesign and clickable mockup as a separate deliverable",
+            ],
+            expected_result="Working web portal and approved UX prototype",
+        )
+
+        self.assertEqual(public_direction(context), "mixed")
 
     def test_public_direction_classifies_data_research_as_analytics(self) -> None:
         context = context_with_direction_inputs(
@@ -642,7 +961,7 @@ class TestResponseWriterStage(unittest.TestCase):
 
         self.assertEqual(public_direction(context), "development")
 
-    def test_public_direction_unknown_value_raises_clear_error(self) -> None:
+    def test_public_direction_unknown_value_without_signals_returns_unknown(self) -> None:
         context = context_with_direction_inputs(
             project_direction="internal alignment",
             project_type="operations",
@@ -651,11 +970,23 @@ class TestResponseWriterStage(unittest.TestCase):
             expected_result="Shared understanding",
         )
 
-        with self.assertRaisesRegex(
-            BriefAnalysisResultError,
-            "Unable to classify public project direction",
-        ):
-            public_direction(context)
+        self.assertEqual(public_direction(context), "unknown")
+
+    def test_public_direction_unknown_event_volunteering_returns_unknown(self) -> None:
+        context = context_with_direction_inputs(
+            project_direction="Студенческое мероприятие / Волонтерство",
+            project_type="community operations",
+            project_goal="Organize participant reference materials",
+            tasks=["Structure handbook sections", "Prepare navigation labels"],
+            expected_result="Ready knowledge base",
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+
+        self.assertEqual(
+            updated.final_response_payload["extracted_fields"]["direction"],
+            "unknown",
+        )
 
     def test_missing_public_string_fields_are_empty_strings(self) -> None:
         context = make_context()
@@ -681,7 +1012,7 @@ class TestResponseWriterStage(unittest.TestCase):
             "development",
         )
 
-    def test_missing_public_direction_without_signals_raises_clear_error(self) -> None:
+    def test_missing_public_direction_without_signals_returns_unknown(self) -> None:
         context = make_context()
         assert context.extracted_brief is not None
         extracted = context.extracted_brief.model_copy(
@@ -694,11 +1025,12 @@ class TestResponseWriterStage(unittest.TestCase):
             }
         )
 
-        with self.assertRaisesRegex(
-            BriefAnalysisResultError,
-            "Unable to classify public project direction",
-        ):
-            ResponseWriterStage().run_context(context.with_extracted_brief(extracted))
+        updated = ResponseWriterStage().run_context(context.with_extracted_brief(extracted))
+
+        self.assertEqual(
+            updated.final_response_payload["extracted_fields"]["direction"],
+            "unknown",
+        )
 
     def test_public_reasons_exclude_arbitration_diagnostics(self) -> None:
         context = make_context().with_arbitration_result(
@@ -718,9 +1050,13 @@ class TestResponseWriterStage(unittest.TestCase):
 
         updated = ResponseWriterStage().run_context(context)
 
-        self.assertEqual(
+        self.assertIn(
+            "Бриф содержит достаточно информации",
+            updated.final_response_payload["assessment"]["reasons"][0],
+        )
+        self.assertIn(
+            "Цель описана.",
             updated.final_response_payload["assessment"]["reasons"],
-            ["Цель описана."],
         )
         serialized_reasons = "\n".join(
             updated.final_response_payload["assessment"]["reasons"]
@@ -770,6 +1106,44 @@ class TestResponseWriterStage(unittest.TestCase):
 
         with self.assertRaises(BriefAnalysisResultError):
             ResponseWriterStage().run_context(context)
+
+    def test_accept_customer_response_ignores_stale_assessment_summary(self) -> None:
+        stale_summary = "Проект требует упрощения и дополнительной проверки."
+        context = context_with_assessment_summary(
+            status=DecisionStatus.accept,
+            assessment_summary=stale_summary,
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+        payload = updated.final_response_payload
+
+        self.assertNotIn(stale_summary, payload["customer_response_draft"])
+        self.assertIn("Проект можно принять в работу.", payload["summary"])
+        self.assertIn(payload["summary"], payload["customer_response_draft"])
+        self.assertEqual(payload["assessment"]["recommendation"], "accept")
+
+    def test_accept_with_clarifications_customer_response_ignores_stale_assessment_summary(self) -> None:
+        stale_summary = "Проект требует упрощения и дополнительной проверки."
+        context = context_with_assessment_summary(
+            status=DecisionStatus.accept_with_clarifications,
+            assessment_summary=stale_summary,
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+        payload = updated.final_response_payload
+
+        self.assertNotIn(stale_summary, payload["customer_response_draft"])
+        self.assertIn("Проект можно принять в работу", payload["summary"])
+        self.assertIn(payload["summary"], payload["customer_response_draft"])
+        self.assertIn("Уточняющие вопросы", payload["customer_response_draft"])
+        self.assertEqual(
+            payload["clarifying_questions"],
+            ["Какие материалы уже есть?"],
+        )
+        self.assertEqual(
+            payload["assessment"]["recommendation"],
+            "accept_with_clarifications",
+        )
 
     def test_simplify_public_payload_requires_mvp_plan(self) -> None:
         context = make_context(DecisionStatus.simplify)

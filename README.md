@@ -173,6 +173,9 @@ CLI возвращает JSON:
 }
 ```
 
+`extracted_fields.direction` is one of `development | design | analytics | marketing | ai | education | mixed | unknown`.
+`mixed` means the project combines several directions; `unknown` means the direction could not be reliably classified in the public taxonomy.
+
 ## Тесты
 
 ```bash

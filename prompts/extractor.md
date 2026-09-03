@@ -18,6 +18,8 @@ Do not make acceptance or rejection decisions.
 
 When information is absent, use the missing or empty representation allowed by the structured output schema.
 When information is only hinted at, mark it as uncertain instead of explicit.
+An explicit negative answer is an explicit fact, not missing information. If the brief clearly says that something is not required, not needed, or intentionally absent, record that statement as an explicit fact in the corresponding extracted field when such a field exists. For example, if the brief says integrations or API access are not required, the integrations field must contain an explicit fact with that value and evidence.
+If the customer clearly says that project materials will be provided or transferred by the customer, treat this as explicit information about materials. Future-provided materials are not missing information when the commitment is explicitly stated.
 Use short evidence fragments copied from the brief for extracted facts.
 
 # User

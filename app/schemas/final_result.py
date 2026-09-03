@@ -23,6 +23,7 @@ DirectionValue = Literal[
     "ai",
     "education",
     "mixed",
+    "unknown",
 ]
 
 

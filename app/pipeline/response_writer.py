@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from app.pipeline.contracts import BaseStage
-from app.pipeline.result_builder import BriefAnalysisResultBuilder, deduplicate
+from app.pipeline.result_builder import (
+    BriefAnalysisResultBuilder,
+    build_public_decision_summary,
+    deduplicate,
+)
 from app.schemas import (
     AIContext,
     CriterionEvaluationStatus,
@@ -197,6 +201,8 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
 
     def _summary(self, context: AIContext) -> str:
         """Выполняет шаг «summary». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        if context.arbitration_result is not None:
+            return build_public_decision_summary(context)
         if context.assessment_result and context.assessment_result.summary:
             return context.assessment_result.summary
         if context.extracted_brief and context.extracted_brief.project_goal.value:

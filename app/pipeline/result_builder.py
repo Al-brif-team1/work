@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import re
 from pathlib import Path
@@ -13,6 +14,7 @@ from app.schemas import (
     BriefAssessmentSummary,
     BriefExtractedFields,
     CompletenessItem,
+    CriterionEvaluationStatus,
     DecisionStatus,
     ExtractedFact,
     RiskSeverity,
@@ -33,6 +35,7 @@ _DIRECTION_VALUES = frozenset(
         "ai",
         "education",
         "mixed",
+        "unknown",
     }
 )
 
@@ -116,6 +119,49 @@ _FALLBACK_DIRECTION_SIGNALS = {
     ),
 }
 
+_INCIDENTAL_DESIGN_IN_PRODUCT_SIGNALS = frozenset(
+    {
+        "ui",
+        "interface",
+        "интерфейс",
+    }
+)
+
+_STRONG_DESIGN_WORK_SIGNALS = frozenset(
+    {
+        "ux",
+        "redesign",
+        "mockup",
+        "редизайн",
+        "макет",
+        "прототип",
+        "дизайн",
+    }
+)
+
+_GENERIC_DEVELOPMENT_PRODUCT_SIGNALS = frozenset(
+    {
+        "web",
+        "mobile",
+        "app",
+        "application",
+        "service",
+        "сайт",
+        "веб-сервис",
+        "приложение",
+        "мобильное приложение",
+        "портал",
+    }
+)
+
+
+@dataclass(frozen=True)
+class DirectionSignal:
+    direction: DirectionValue
+    keyword: str
+    source: str
+    value: str
+
 
 def classify_direction(
     *,
@@ -132,11 +178,9 @@ def classify_direction(
     if explicit is not None:
         return explicit
 
-    signal_matches = _find_direction_signals([project_direction.value])
-    if len(signal_matches) == 1:
-        return next(iter(signal_matches))
-    if len(signal_matches) > 1:
-        return "mixed"
+    direction = _classify_direction_signals([project_direction.value])
+    if direction is not None:
+        return direction
 
     context_values = [
         project_type.value,
@@ -144,16 +188,11 @@ def classify_direction(
         *[task.value for task in tasks],
         expected_result.value,
     ]
-    signal_matches = _find_direction_signals(context_values)
-    if len(signal_matches) == 1:
-        return next(iter(signal_matches))
-    if len(signal_matches) > 1:
-        return "mixed"
+    direction = _classify_direction_signals(context_values)
+    if direction is not None:
+        return direction
 
-    raw = project_direction.value.strip() if project_direction.value else ""
-    raise BriefAnalysisResultError(
-        f"Unable to classify public project direction: {raw or '<empty>'}"
-    )
+    return "unknown"
 
 
 def _build_direction_alias_map(
@@ -188,20 +227,106 @@ def _classify_exact_direction(
 
 
 def _find_direction_signals(values: list[str | None]) -> set[DirectionValue]:
-    matches: set[DirectionValue] = set()
-    for value in values:
+    return _direction_set_from_signals(_find_direction_signal_evidence(values))
+
+
+def _classify_direction_signals(values: list[str | None]) -> DirectionValue | None:
+    signals = _find_direction_signal_evidence(values)
+    matches = _direction_set_from_signals(signals)
+    if len(matches) == 1:
+        return next(iter(matches))
+    if not matches:
+        return None
+    if _is_incidental_design_inside_development_product(signals, matches):
+        return "development"
+    if _is_design_work_on_generic_development_product(signals, matches):
+        return "design"
+    return "mixed"
+
+
+def _find_direction_signal_evidence(values: list[str | None]) -> list[DirectionSignal]:
+    matches: list[DirectionSignal] = []
+    for index, value in enumerate(values):
         normalized = normalize_lookup_text(value)
         if not normalized:
             continue
         for direction, signals in _FALLBACK_DIRECTION_SIGNALS.items():
-            if any(contains_signal(normalized, signal) for signal in signals):
-                matches.add(direction)
+            for signal in signals:
+                if contains_signal(normalized, signal):
+                    matches.append(
+                        DirectionSignal(
+                            direction=direction,
+                            keyword=signal,
+                            source=f"value[{index}]",
+                            value=normalized,
+                        )
+                    )
 
+    return matches
+
+
+def _direction_set_from_signals(
+    signals: list[DirectionSignal],
+) -> set[DirectionValue]:
+    matches = {signal.direction for signal in signals}
     if "ai" in matches:
         matches.discard("development")
     if "development" in matches:
         matches.discard("education")
     return matches
+
+
+def _is_incidental_design_inside_development_product(
+    signals: list[DirectionSignal],
+    matches: set[DirectionValue],
+) -> bool:
+    if matches != {"development", "design"}:
+        return False
+
+    design_signals = _signals_for_direction(signals, "design")
+    development_signals = _signals_for_direction(signals, "development")
+    if not design_signals or not development_signals:
+        return False
+
+    return all(
+        signal.keyword in _INCIDENTAL_DESIGN_IN_PRODUCT_SIGNALS
+        for signal in design_signals
+    )
+
+
+def _is_design_work_on_generic_development_product(
+    signals: list[DirectionSignal],
+    matches: set[DirectionValue],
+) -> bool:
+    if matches != {"development", "design"}:
+        return False
+
+    design_signals = _signals_for_direction(signals, "design")
+    development_signals = _signals_for_direction(signals, "development")
+    if not design_signals or not development_signals:
+        return False
+    if not any(
+        signal.keyword in _STRONG_DESIGN_WORK_SIGNALS
+        for signal in design_signals
+    ):
+        return False
+
+    design_sources = {signal.source for signal in design_signals}
+    development_sources = {signal.source for signal in development_signals}
+    if not development_sources.issubset(design_sources):
+        return False
+
+    return all(
+        signal.keyword in _GENERIC_DEVELOPMENT_PRODUCT_SIGNALS
+        for signal in development_signals
+    )
+
+
+def _signals_for_direction(
+    signals: list[DirectionSignal],
+    direction: DirectionValue,
+) -> list[DirectionSignal]:
+    return [signal for signal in signals if signal.direction == direction]
 
 
 def contains_signal(value: str, signal: str) -> bool:
@@ -235,6 +360,47 @@ def deduplicate(values: list[str]) -> list[str]:
         seen.add(normalized)
         result.append(normalized)
     return result
+
+
+def build_public_decision_summary(context: AIContext) -> str:
+    """Build public summary from the final deterministic decision."""
+    assert context.arbitration_result is not None
+
+    status = context.arbitration_result.final_status
+    prefix_by_status = {
+        DecisionStatus.accept: "Проект можно принять в работу.",
+        DecisionStatus.accept_with_clarifications: (
+            "Проект можно принять в работу, но перед стартом нужно уточнить детали."
+        ),
+        DecisionStatus.clarify: (
+            "Для принятия решения по проекту нужно получить обязательную информацию."
+        ),
+        DecisionStatus.simplify: (
+            "Проект в текущем объёме требует упрощения перед запуском."
+        ),
+        DecisionStatus.mentor_review: (
+            "Перед принятием решения по проекту требуется оценка ментора."
+        ),
+        DecisionStatus.reject: (
+            "Проект в текущем виде не рекомендуется принимать в работу."
+        ),
+    }
+    summary = prefix_by_status[status]
+    description = _project_description(context)
+    if description:
+        return f"{summary} Цель: {description}"
+    return summary
+
+
+def _project_description(context: AIContext) -> str:
+    """Use extracted facts only as project description, not as a decision."""
+    if context.extracted_brief is None:
+        return ""
+
+    goal = BriefAnalysisResultBuilder._fact_value(context.extracted_brief.project_goal)
+    if goal:
+        return goal
+    return BriefAnalysisResultBuilder._fact_value(context.extracted_brief.expected_result)
 
 
 class BriefAnalysisResultBuilder:
@@ -285,7 +451,6 @@ class BriefAnalysisResultBuilder:
                     [
                         *self._fact_values(extracted.materials),
                         *self._fact_values(extracted.existing_resources),
-                        *self._fact_values(extracted.integrations),
                     ]
                 ),
                 missing_information=[
@@ -310,17 +475,7 @@ class BriefAnalysisResultBuilder:
                 confidence=self._confidence_label(
                     arbitration.confidence or assessment.confidence
                 ),
-                reasons=deduplicate(
-                    [
-
-                        *[
-                            item.explanation
-                            for item in assessment.criterion_evaluations
-                            if item.explanation
-                        ],
-
-                    ]
-                ),
+                reasons=self._build_public_reasons(context),
                 risks=[risk.description for risk in assessment.risks],
             ),
             clarifying_questions=[
@@ -427,6 +582,9 @@ class BriefAnalysisResultBuilder:
 
     def _build_summary(self, context: AIContext) -> str:
         """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
+        if context.arbitration_result is not None:
+            return build_public_decision_summary(context)
+
         if context.assessment_result and context.assessment_result.summary:
             return context.assessment_result.summary
 
@@ -440,6 +598,137 @@ class BriefAnalysisResultBuilder:
         if result:
             return f"Ожидаемый результат: {result}."
         return "Краткое описание проекта не удалось извлечь из брифа."
+
+    def _build_public_reasons(self, context: AIContext) -> list[str]:
+        """Build public reasons from the final deterministic decision."""
+        assessment = context.assessment_result
+        if assessment is None:
+            return []
+
+        if context.arbitration_result is None:
+            return deduplicate(
+                [
+                    item.explanation
+                    for item in assessment.criterion_evaluations
+                    if item.explanation
+                ]
+            )
+
+        status = context.arbitration_result.final_status
+        reasons_by_status = {
+            DecisionStatus.accept: (
+                "Бриф содержит достаточно информации, и блокирующих ограничений "
+                "для принятия проекта не выявлено."
+            ),
+            DecisionStatus.accept_with_clarifications: (
+                "Проект можно принять, но перед началом работы необходимо уточнить "
+                "отдельные детали."
+            ),
+            DecisionStatus.clarify: (
+                "Для принятия решения не хватает обязательной информации или "
+                "требуется уточнить блокирующие данные."
+            ),
+            DecisionStatus.simplify: (
+                "Текущий объём проекта слишком велик для студенческого MVP и "
+                "требует сокращения."
+            ),
+            DecisionStatus.mentor_review: (
+                "Для принятия решения требуется дополнительная оценка ментора."
+            ),
+            DecisionStatus.reject: (
+                "Проект в текущем виде не рекомендуется принимать из-за "
+                "выявленного блокирующего ограничения."
+            ),
+        }
+        reasons = [reasons_by_status[status]]
+
+        if status is DecisionStatus.accept:
+            reasons.extend(
+                self._criterion_explanations(
+                    context,
+                    {CriterionEvaluationStatus.met},
+                )
+            )
+        elif status is DecisionStatus.accept_with_clarifications:
+            reasons.extend(self._optional_clarification_reasons(context))
+            reasons.extend(
+                self._criterion_explanations(
+                    context,
+                    {CriterionEvaluationStatus.met},
+                )
+            )
+        elif status is DecisionStatus.clarify:
+            reasons.extend(self._blocking_clarification_reasons(context))
+            reasons.extend(
+                self._criterion_explanations(
+                    context,
+                    {
+                        CriterionEvaluationStatus.not_met,
+                        CriterionEvaluationStatus.insufficient_information,
+                        CriterionEvaluationStatus.risk_detected,
+                    },
+                )
+            )
+        elif status is DecisionStatus.simplify:
+            reasons.extend(
+                risk.description
+                for risk in assessment.risks
+                if risk.type == "scope_too_large"
+            )
+        elif status is DecisionStatus.mentor_review:
+            reasons.extend(
+                risk.description
+                for risk in assessment.risks
+                if risk.type == "mentor_expertise_required"
+            )
+        elif status is DecisionStatus.reject:
+            reasons.extend(
+                risk.description
+                for risk in assessment.risks
+                if risk.severity in {RiskSeverity.high, RiskSeverity.critical}
+            )
+
+        return deduplicate(reasons)
+
+    @staticmethod
+    def _criterion_explanations(
+        context: AIContext,
+        statuses: set[CriterionEvaluationStatus],
+    ) -> list[str]:
+        assessment = context.assessment_result
+        if assessment is None:
+            return []
+        return [
+            item.explanation
+            for item in assessment.criterion_evaluations
+            if item.explanation and item.status in statuses
+        ]
+
+    @staticmethod
+    def _blocking_clarification_reasons(context: AIContext) -> list[str]:
+        completeness = context.completeness_result
+        if completeness is None:
+            return []
+
+        items = [
+            *completeness.missing_information,
+            *completeness.clarification_information,
+        ]
+        return [
+            f"{item.title}: {item.reason or item.field_path}"
+            for item in items
+        ]
+
+    @staticmethod
+    def _optional_clarification_reasons(context: AIContext) -> list[str]:
+        completeness = context.completeness_result
+        if completeness is None:
+            return []
+
+        return [
+            f"{item.title}: {item.reason or item.field_path}"
+            for item in completeness.optional_missing_information
+        ]
 
     @staticmethod
     def _format_mvp_suggestion(context: AIContext) -> str:
