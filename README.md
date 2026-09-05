@@ -11,7 +11,7 @@ Python-ядро для анализа внешних брифов заказчи
 
 ## Пайплайн
 
-1. `BriefInputFactory` загружает текст или UTF-8 файл и нормализует пробелы.
+1. `BriefInputFactory` загружает текст, UTF-8 файл или .docx и нормализует пробелы.
 2. `Extractor` извлекает фактические данные в `ExtractedBrief`.
 3. `CompletenessCheckStage` проверяет обязательные поля из `config/criteria.yaml`.
 4. `AssessmentStage` оценивает критерии и риски за один LLM-вызов. Если бриф попал
@@ -132,10 +132,11 @@ config/field_titles.json
 python -m app.main --text "Нужно сделать сайт для образовательного проекта..."
 ```
 
-Анализ UTF-8 файла:
+Анализ файла (UTF-8 текст или .docx):
 
 ```bash
 python -m app.main --file examples/brief.txt
+python -m app.main --file examples/brief.docx
 ```
 
 Только нормализация ввода без вызова LLM:

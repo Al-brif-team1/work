@@ -16,6 +16,7 @@ from app.schemas import (
     BriefAnalysisResult,
 )
 
+from docx import Document
 
 class TestBriefInputNormalizer(unittest.TestCase):
     """Класс «TestBriefInputNormalizer» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
@@ -70,6 +71,63 @@ class TestBriefInputFactory(unittest.TestCase):
         self.assertEqual(brief_input.metadata.input_type, "file")
         self.assertEqual(brief_input.metadata.file_path, str(path))
         self.assertEqual(brief_input.metadata.file_name, "brief.txt")
+
+    def test_from_file_reads_docx_and_sets_metadata(self) -> None:
+        factory = BriefInputFactory()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "brief.docx"
+            document = Document()
+            document.add_paragraph("Brief from docx")
+            document.save(path)
+
+            brief_input = factory.from_file(path)
+
+        self.assertEqual(brief_input.original_text, "Brief from docx")
+        self.assertEqual(brief_input.normalized_text, "Brief from docx")
+        self.assertEqual(brief_input.metadata.source, "file")
+        self.assertEqual(brief_input.metadata.input_type, "file")
+        self.assertEqual(brief_input.metadata.file_path, str(path))
+        self.assertEqual(brief_input.metadata.file_name, "brief.docx")
+
+    def test_from_file_reads_docx_table_content(self) -> None:
+        factory = BriefInputFactory()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "brief_with_table.docx"
+            document = Document()
+            document.add_paragraph("Intro paragraph")
+            table = document.add_table(rows=1, cols=2)
+            table.rows[0].cells[0].text = "Field"
+            table.rows[0].cells[1].text = "Value"
+            document.save(path)
+
+            brief_input = factory.from_file(path)
+
+        self.assertIn("Intro paragraph", brief_input.original_text)
+        self.assertIn("Field", brief_input.original_text)
+        self.assertIn("Value", brief_input.original_text)
+
+    def test_from_file_raises_for_corrupted_docx(self) -> None:
+        factory = BriefInputFactory()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "corrupted.docx"
+            path.write_bytes(b"not a real docx file")
+
+            with self.assertRaisesRegex(BriefInputError, "Unable to read brief file"):
+                factory.from_file(path)
+
+    def test_from_file_raises_for_docx_without_extractable_text(self) -> None:
+        factory = BriefInputFactory()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "empty.docx"
+            document = Document()
+            document.save(path)
+
+            with self.assertRaisesRegex(BriefInputError, "Unable to read brief file"):
+                factory.from_file(path)
 
     def test_from_file_raises_for_missing_path(self) -> None:
         factory = BriefInputFactory()

@@ -7,6 +7,8 @@ from pathlib import Path
 
 from app.schemas import BriefInput, BriefInputMetadata
 
+from app.input.document_readers import read_docx
+
 _ZERO_WIDTH_CHARS = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
 _MULTIPLE_SPACES = re.compile(r"[ \t]{2,}")
 _WRAPPER_MARKERS = {
@@ -97,11 +99,16 @@ class BriefInputFactory:
         file_path: str | Path,
         metadata: BriefInputMetadata | None = None,
     ) -> BriefInput:
-        """Выполняет шаг «from file». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        """Извлекает текст из файла и преобразует его в объект BriefInput."""
         path = Path(file_path)
+        suffix = path.suffix.lower()
+
         try:
-            original_text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
+            if suffix == ".docx":
+                original_text = read_docx(path)
+            else:
+                original_text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
             raise BriefInputError(f"Unable to read brief file: {path}") from exc
 
         input_metadata = metadata or BriefInputMetadata()
