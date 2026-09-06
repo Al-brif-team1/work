@@ -21,7 +21,7 @@ from app.config import (
     get_criteria_config,
 )
 from app.llm.runner import LLMRunResult, LLMRunner
-from app.pipeline.base import BaseLLMStage
+from app.pipeline.base import BaseLLMStage, format_attempts
 from app.pipeline.result_builder import contains_signal, normalize_lookup_text
 from app.prompts import PromptManager, RenderedPrompt
 from app.schemas.ai_context import AIContext
@@ -406,7 +406,7 @@ class AssessmentStage(
         last_error: Exception | None,
     ) -> Exception:
         """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
-        return AssessmentError(f"Unable to assess brief after {attempts} attempts")
+        return AssessmentError(f"Unable to assess brief after {format_attempts(attempts)}")
 
     def _render_assessment_prompt(
         self,

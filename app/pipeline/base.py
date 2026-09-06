@@ -21,6 +21,12 @@ TInput = TypeVar("TInput")
 TOutput = TypeVar("TOutput")
 
 
+def format_attempts(attempts: int) -> str:
+    """Format an attempt count for user-facing stage errors."""
+    suffix = "attempt" if attempts == 1 else "attempts"
+    return f"{attempts} {suffix}"
+
+
 @dataclass(frozen=True)
 class LLMStageRunResult(Generic[TPayload]):
     """Класс «LLMStageRunResult» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
@@ -125,7 +131,8 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
                 request_kwargs=self.build_request_kwargs(stage_input),
             )
         except LLMRunnerError as exc:
-            raise self._build_failure_exception(self._max_retries, exc) from exc
+            attempts = exc.attempts_executed or self._max_retries
+            raise self._build_failure_exception(attempts, exc) from exc
 
         try:
             return self.postprocess(cast(LLMRunResult[TPayload], llm_result))
@@ -260,8 +267,13 @@ class BaseLLMStage(BaseStage[TInput, TOutput], ABC, Generic[TInput, TPayload, TO
                 payload_validator=payload_validator,
             )
         except Exception as exc:
+            attempts = (
+                exc.attempts_executed
+                if isinstance(exc, LLMRunnerError) and exc.attempts_executed is not None
+                else self._max_retries
+            )
             raise self._build_failure_exception(
-                self._max_retries,
+                attempts,
                 exc,
             ) from exc
 
