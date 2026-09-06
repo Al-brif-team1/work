@@ -11,6 +11,7 @@ from typing import Sequence
 from app.config import Config
 from app.input import BriefInputError, BriefInputFactory
 from app.llm.factory import LLMClientFactory
+from app.llm.runner import LLMRunnerProviderError, LLMRunnerTimeoutError
 from app.pipeline import AssessmentStage, BriefAnalysisPipeline, BriefAnalysisPipelineError
 from app.schemas import AIContext, AssessmentResult, BriefAnalysisResult
 
@@ -46,6 +47,39 @@ class TrafficLightDiagnosticsStage:
 def add_traffic_light_diagnostics_stage(pipeline: BriefAnalysisPipeline) -> None:
     """Insert CLI-only traffic-light diagnostics right after assessment."""
     pipeline.insert_stage_after(AssessmentStage, TrafficLightDiagnosticsStage())
+
+
+def format_pipeline_error(exc: Exception) -> str:
+    """Return a safe short CLI message for known technical LLM failures."""
+    llm_error = _find_exception(exc, LLMRunnerProviderError)
+    timeout_error = _find_exception(exc, LLMRunnerTimeoutError)
+    if timeout_error is not None:
+        return "LLM provider timed out. Please try again later."
+
+    if llm_error is None:
+        return str(exc)
+
+    if llm_error.status_code in {401, 403}:
+        return "LLM provider authentication/access error."
+    if llm_error.status_code == 402:
+        return "LLM provider access/credits error."
+    if llm_error.status_code == 429:
+        return "LLM provider is temporarily rate-limited. Please try again later."
+    if llm_error.status_code in {500, 502, 503, 504}:
+        return "LLM provider is temporarily unavailable. Please try again later."
+    if llm_error.retryable:
+        return "LLM provider is temporarily unavailable. Please try again later."
+
+    return "LLM provider request failed."
+
+
+def _find_exception(exc: BaseException, target_type: type[BaseException]) -> BaseException | None:
+    current: BaseException | None = exc
+    while current is not None:
+        if isinstance(current, target_type):
+            return current
+        current = current.__cause__
+    return None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -113,7 +147,7 @@ def run(argv: Sequence[str] | None = None) -> int:
             raise BriefAnalysisPipelineError("Pipeline did not produce final payload")
         result = BriefAnalysisResult.model_validate(context.final_response_payload)
     except (RuntimeError, BriefAnalysisPipelineError) as exc:
-        print(f"Pipeline error: {exc}", file=sys.stderr)
+        print(f"Pipeline error: {format_pipeline_error(exc)}", file=sys.stderr)
         return 1
 
     print(

@@ -10,11 +10,13 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.llm import (
+    LLMProviderError,
     LLMRunResult,
     LLMRunner,
     LLMRunnerProviderError,
     LLMRunnerStructuredOutputError,
 )
+from app.llm.openrouter import OpenRouterLLMClient
 
 
 class RecordingTraceContext:
@@ -91,7 +93,11 @@ class TestLLMRunner(unittest.TestCase):
     def test_retries_provider_errors_and_returns_telemetry(self) -> None:
         llm_client = FakeLLMClient(
             [
-                RuntimeError("temporary"),
+                LLMProviderError(
+                    "temporary",
+                    status_code=503,
+                    retryable=True,
+                ),
                 {
                     "value": "ok",
                     "usage": {
@@ -133,6 +139,21 @@ class TestLLMRunner(unittest.TestCase):
         self.assertEqual(tracing_client.trace_calls[0]["name"], "runner.test")
         self.assertEqual(tracing_client.span_calls[0]["name"], "runner.test.llm")
         self.assertEqual(result.model_dump()["payload"]["value"], "ok")
+
+    def test_429_provider_error_is_retried(self) -> None:
+        self._assert_provider_status_is_retried(429)
+
+    def test_503_provider_error_is_retried(self) -> None:
+        self._assert_provider_status_is_retried(503)
+
+    def test_401_provider_error_is_not_retried(self) -> None:
+        self._assert_provider_status_is_not_retried(401)
+
+    def test_402_provider_error_is_not_retried(self) -> None:
+        self._assert_provider_status_is_not_retried(402)
+
+    def test_400_provider_error_is_not_retried(self) -> None:
+        self._assert_provider_status_is_not_retried(400)
 
     def test_run_builds_messages_from_prompt_and_context(self) -> None:
         llm_client = FakeLLMClient([{"value": "ok"}])
@@ -247,6 +268,31 @@ class TestLLMRunner(unittest.TestCase):
         self.assertIsInstance(context.exception.__cause__, LLMRunnerProviderError)
         self.assertIn("not valid JSON", str(context.exception.__cause__))
 
+    def test_invalid_json_logs_raw_response_for_each_attempt(self) -> None:
+        llm_client = object.__new__(OpenRouterLLMClient)
+        llm_client.generate = lambda messages, **kwargs: "```json\n{}\n```"
+        runner = LLMRunner(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            max_retries=2,
+            timeout_seconds=None,
+        )
+
+        with self.assertLogs("app.llm.openrouter", level="ERROR") as logs:
+            with self.assertRaises(LLMRunnerProviderError):
+                runner.run_json(
+                    messages=[{"role": "user", "content": "hello"}],
+                    response_model=RunnerPayload,
+                    trace_name="runner.test",
+                    span_name="runner.test.llm",
+                )
+
+        self.assertEqual(len(logs.output), 2)
+        for entry in logs.output:
+            self.assertIn("JSONDecodeError", entry)
+            self.assertIn("response_length=14", entry)
+            self.assertIn("raw_response_text='```json\\n{}\\n```'", entry)
+
     def test_structured_validation_errors_are_centralized(self) -> None:
         llm_client = FakeLLMClient([{"unexpected": "shape"}])
         runner = LLMRunner(
@@ -269,8 +315,101 @@ class TestLLMRunner(unittest.TestCase):
             LLMRunnerStructuredOutputError,
         )
 
+    def test_structured_output_error_is_retried(self) -> None:
+        llm_client = FakeLLMClient(
+            [
+                {"unexpected": "shape"},
+                {"value": "ok"},
+            ]
+        )
+        runner = LLMRunner(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            max_retries=2,
+            timeout_seconds=2,
+        )
+
+        result = runner.run_json(
+            messages=[{"role": "user", "content": "hello"}],
+            response_model=RunnerPayload,
+            trace_name="runner.test",
+            span_name="runner.test.llm",
+        )
+
+        self.assertEqual(result.payload.value, "ok")
+        self.assertEqual(result.attempts, 2)
+        self.assertEqual(len(llm_client.calls), 2)
+
+    def test_validation_error_logs_payload_for_each_attempt(self) -> None:
+        llm_client = FakeLLMClient(
+            [
+                {"unexpected": "shape"},
+                {"unexpected": "shape"},
+            ]
+        )
+        runner = LLMRunner(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            max_retries=2,
+            timeout_seconds=2,
+        )
+
+        with self.assertLogs("app.llm.runner", level="ERROR") as logs:
+            with self.assertRaises(LLMRunnerProviderError):
+                runner.run_json(
+                    messages=[{"role": "user", "content": "hello"}],
+                    response_model=RunnerPayload,
+                    trace_name="runner.test",
+                    span_name="runner.test.llm",
+                )
+
+        self.assertEqual(len(logs.output), 2)
+        for entry in logs.output:
+            self.assertIn("response_model=RunnerPayload", entry)
+            self.assertIn("'unexpected': 'shape'", entry)
+            self.assertIn("Field required", entry)
+
+    def test_attempt_diagnostics_log_shape_without_message_content(self) -> None:
+        llm_client = FakeLLMClient([{"value": "ok"}])
+        runner = LLMRunner(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            max_retries=1,
+            timeout_seconds=2,
+            model_name="test-model",
+        )
+
+        with self.assertLogs("app.llm.runner", level="INFO") as logs:
+            runner.run_json(
+                messages=[{"role": "user", "content": "secret brief contents"}],
+                response_model=RunnerPayload,
+                trace_name="runner.test",
+                span_name="runner.test.llm",
+            )
+
+        joined_logs = "\n".join(logs.output)
+        actual_messages = llm_client.calls[0]["messages"]
+        expected_lengths = [
+            len(message.get("content", "")) for message in actual_messages
+        ]
+        self.assertIn("LLM attempt starting: trace_name=runner.test", joined_logs)
+        self.assertIn("attempt=1", joined_logs)
+        self.assertIn("model=test-model", joined_logs)
+        self.assertIn("timeout=2", joined_logs)
+        self.assertIn("response_model=RunnerPayload", joined_logs)
+        self.assertIn("message_count=1", joined_logs)
+        self.assertIn(f"message_lengths={expected_lengths}", joined_logs)
+        self.assertIn(
+            f"total_message_length={sum(expected_lengths)}",
+            joined_logs,
+        )
+        self.assertIn("response_format_present=True", joined_logs)
+        self.assertIn("status=success", joined_logs)
+        self.assertIn("latency_seconds=", joined_logs)
+        self.assertNotIn("secret brief contents", joined_logs)
+
     def test_timeout_is_reported_as_runner_error(self) -> None:
-        llm_client = FakeLLMClient([{"value": "late"}], delay_seconds=0.2)
+        llm_client = FakeLLMClient([TimeoutError("timed out")])
         runner = LLMRunner(
             llm_client=llm_client,
             tracing_client=RecordingTracingClient(),
@@ -278,17 +417,99 @@ class TestLLMRunner(unittest.TestCase):
             timeout_seconds=0.01,
         )
 
-        started_at = time.perf_counter()
-        with self.assertRaises(LLMRunnerProviderError):
+        with self.assertRaises(LLMRunnerProviderError) as context:
             runner.run_json(
                 messages=[{"role": "user", "content": "hello"}],
                 response_model=RunnerPayload,
                 trace_name="runner.test",
                 span_name="runner.test.llm",
             )
-        elapsed = time.perf_counter() - started_at
 
-        self.assertLess(elapsed, 0.1)
+        self.assertEqual(len(llm_client.calls), 1)
+        self.assertIn("timed out", str(context.exception.__cause__))
+
+    def test_timeout_attempt_diagnostics_include_status_and_latency(self) -> None:
+        llm_client = FakeLLMClient([TimeoutError("timed out")])
+        runner = LLMRunner(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            max_retries=1,
+            timeout_seconds=0.01,
+            model_name="test-model",
+        )
+
+        with self.assertLogs("app.llm.runner", level="INFO") as logs:
+            with self.assertRaises(LLMRunnerProviderError):
+                runner.run_json(
+                    messages=[{"role": "user", "content": "hello"}],
+                    response_model=RunnerPayload,
+                    trace_name="runner.test",
+                    span_name="runner.test.llm",
+                )
+
+        joined_logs = "\n".join(logs.output)
+        self.assertIn("LLM attempt starting: trace_name=runner.test", joined_logs)
+        self.assertIn("status=timeout", joined_logs)
+        self.assertIn("latency_seconds=", joined_logs)
+
+    def _assert_provider_status_is_retried(self, status_code: int) -> None:
+        llm_client = FakeLLMClient(
+            [
+                LLMProviderError(
+                    f"status {status_code}",
+                    status_code=status_code,
+                    retryable=True,
+                ),
+                {"value": "ok"},
+            ]
+        )
+        runner = LLMRunner(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            max_retries=2,
+            timeout_seconds=2,
+        )
+
+        result = runner.run_json(
+            messages=[{"role": "user", "content": "hello"}],
+            response_model=RunnerPayload,
+            trace_name="runner.test",
+            span_name="runner.test.llm",
+        )
+
+        self.assertEqual(result.payload.value, "ok")
+        self.assertEqual(result.attempts, 2)
+        self.assertEqual(len(llm_client.calls), 2)
+
+    def _assert_provider_status_is_not_retried(self, status_code: int) -> None:
+        llm_client = FakeLLMClient(
+            [
+                LLMProviderError(
+                    f"status {status_code}",
+                    status_code=status_code,
+                    retryable=False,
+                ),
+                {"value": "should not be used"},
+            ]
+        )
+        runner = LLMRunner(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            max_retries=2,
+            timeout_seconds=2,
+        )
+
+        with self.assertRaises(LLMRunnerProviderError) as context:
+            runner.run_json(
+                messages=[{"role": "user", "content": "hello"}],
+                response_model=RunnerPayload,
+                trace_name="runner.test",
+                span_name="runner.test.llm",
+            )
+
+        self.assertEqual(len(llm_client.calls), 1)
+        self.assertEqual(context.exception.status_code, status_code)
+        self.assertFalse(context.exception.retryable)
 
 
 if __name__ == "__main__":

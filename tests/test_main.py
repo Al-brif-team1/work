@@ -1,104 +1,73 @@
+"""Tests for CLI-facing error messages."""
+
 from __future__ import annotations
 
 import io
+import json
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 
-from app.main import (
-    TrafficLightDiagnosticsStage,
-    add_traffic_light_diagnostics_stage,
-    print_traffic_light_diagnostics,
-)
-from app.pipeline import AssessmentStage
-from app.schemas import (
-    AssessmentRecommendation,
-    AssessmentResult,
-    TrafficLightMatch,
-    TrafficLightResult,
-    TrafficLightStatus,
-)
+from app.llm.runner import LLMRunnerProviderError, LLMRunnerTimeoutError
+from app.main import format_pipeline_error, run
 
 
-class TestCliTrafficLightDiagnostics(unittest.TestCase):
-    def test_inserts_diagnostics_stage_after_assessment_stage(self) -> None:
-        class PipelineStub:
-            def __init__(self) -> None:
-                self.insert_calls = []
+def wrap_exception(cause: Exception) -> RuntimeError:
+    try:
+        raise RuntimeError("stage failed") from cause
+    except RuntimeError as exc:
+        return exc
 
-            def insert_stage_after(self, stage_type, stage) -> bool:
-                self.insert_calls.append((stage_type, stage))
-                return True
 
-        pipeline = PipelineStub()
-
-        add_traffic_light_diagnostics_stage(pipeline)
-
-        self.assertEqual(len(pipeline.insert_calls), 1)
-        stage_type, stage = pipeline.insert_calls[0]
-        self.assertIs(stage_type, AssessmentStage)
-        self.assertIsInstance(stage, TrafficLightDiagnosticsStage)
-
-    def test_prints_traffic_light_diagnostics_with_matches(self) -> None:
-        result = AssessmentResult(
-            criterion_evaluations=[],
-            risks=[],
-            evidence=[],
-            has_risks=False,
-            recommendation=AssessmentRecommendation.ready_for_arbitration,
-            traffic_light=TrafficLightResult(
-                status=TrafficLightStatus.green,
-                direction="Programming",
-                specialization="Python",
-                matches=[
-                    TrafficLightMatch(
-                        task="Build a Telegram bot",
-                        matched_rule="simple bot",
-                        status=TrafficLightStatus.green,
-                        reason="Fits student task scope.",
-                    )
-                ],
-            ),
+class TestMainCliErrors(unittest.TestCase):
+    def test_cli_mapping_for_402(self) -> None:
+        exc = wrap_exception(
+            LLMRunnerProviderError(
+                "provider failed",
+                status_code=402,
+                retryable=False,
+                attempts_executed=1,
+            )
         )
-        stderr = io.StringIO()
-
-        with redirect_stderr(stderr):
-            print_traffic_light_diagnostics(result)
 
         self.assertEqual(
-            stderr.getvalue(),
-            "\n[TRAFFIC LIGHT DIAGNOSTICS]\n"
-            "status=green\n"
-            "direction=Programming\n"
-            "specialization=Python\n"
-            "matches:\n"
-            "  - task=Build a Telegram bot\n"
-            "    matched_rule=simple bot\n"
-            "    status=green\n"
-            "    reason=Fits student task scope.\n",
+            format_pipeline_error(exc),
+            "LLM provider access/credits error.",
         )
 
-    def test_prints_empty_matches(self) -> None:
-        result = AssessmentResult(
-            criterion_evaluations=[],
-            risks=[],
-            evidence=[],
-            has_risks=False,
-            recommendation=AssessmentRecommendation.ready_for_arbitration,
-            traffic_light=TrafficLightResult(),
+    def test_cli_mapping_for_429(self) -> None:
+        exc = wrap_exception(
+            LLMRunnerProviderError(
+                "provider failed",
+                status_code=429,
+                retryable=True,
+                attempts_executed=2,
+            )
         )
-        stderr = io.StringIO()
-
-        with redirect_stderr(stderr):
-            print_traffic_light_diagnostics(result)
 
         self.assertEqual(
-            stderr.getvalue(),
-            "\n[TRAFFIC LIGHT DIAGNOSTICS]\n"
-            "status=unknown\n"
-            "direction=None\n"
-            "specialization=None\n"
-            "matches: []\n",
+            format_pipeline_error(exc),
+            "LLM provider is temporarily rate-limited. Please try again later.",
         )
+
+    def test_cli_mapping_for_timeout(self) -> None:
+        exc = wrap_exception(LLMRunnerTimeoutError("timed out"))
+
+        self.assertEqual(
+            format_pipeline_error(exc),
+            "LLM provider timed out. Please try again later.",
+        )
+
+    def test_normalize_only_success_path_is_unchanged(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            exit_code = run(["--text", "Build a support bot", "--normalize-only"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stderr.getvalue(), "")
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["normalized_text"], "Build a support bot")
 
 
 if __name__ == "__main__":

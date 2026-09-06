@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from app.llm.runner import LLMRunResult
 from app.llm.runner import LLMRunner
-from app.pipeline.base import BaseLLMStage
+from app.pipeline.base import BaseLLMStage, format_attempts
 from app.prompts import PromptManager, RenderedPrompt
 from app.schemas import (
     AIContext,
@@ -133,7 +133,7 @@ class Extractor(BaseLLMStage[BriefInput, ExtractedBrief, ExtractionResult]):
     ) -> Exception:
         """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
         return ExtractorError(
-            f"Unable to extract brief structure after {attempts} attempts"
+            f"Unable to extract brief structure after {format_attempts(attempts)}"
         )
 
     def _render_extraction_prompt(self, brief_input: BriefInput) -> RenderedPrompt:

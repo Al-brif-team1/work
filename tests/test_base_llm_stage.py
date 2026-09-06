@@ -11,8 +11,9 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.pipeline import BaseLLMStage, LLMStageRunResult
+from app.pipeline.base import format_attempts
 from app.llm.client import Message
-from app.llm import LLMRunResult, LLMRunnerProviderError, LLMTokenUsage
+from app.llm import LLMProviderError, LLMRunResult, LLMRunnerProviderError, LLMTokenUsage
 
 
 class RecordingTraceContext:
@@ -104,7 +105,7 @@ class DummyStage(BaseLLMStage):
         attempts: int,
         last_error: Exception | None,
     ) -> Exception:
-        return DummyStageError(f"dummy stage failed after {attempts} attempts")
+        return DummyStageError(f"dummy stage failed after {format_attempts(attempts)}")
 
 
 class FakeLLMRunner:
@@ -167,7 +168,7 @@ class TemplateStage(BaseLLMStage[str, DummyPayload, str]):
         attempts: int,
         last_error: Exception | None,
     ) -> Exception:
-        return DummyStageError(f"template stage failed after {attempts} attempts")
+        return DummyStageError(f"template stage failed after {format_attempts(attempts)}")
 
 
 class PostprocessFailingStage(TemplateStage):
@@ -264,6 +265,56 @@ class TestBaseLLMStage(unittest.TestCase):
                 stage.run("hello")
 
         self.assertIsInstance(context.exception.__cause__, LLMRunnerProviderError)
+
+    def test_non_retryable_provider_error_uses_actual_attempt_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            prompt_path = Path(tmp_dir) / "dummy.md"
+            prompt_path.write_text("Prompt template", encoding="utf-8")
+            llm_client = FakeLLMClient(
+                [
+                    LLMProviderError(
+                        "credits exhausted",
+                        status_code=402,
+                        retryable=False,
+                    ),
+                    {"answer": "unused"},
+                ]
+            )
+            stage = DummyStage(
+                llm_client=llm_client,
+                tracing_client=RecordingTracingClient(),
+                prompt_path=prompt_path,
+                max_retries=2,
+            )
+
+            with self.assertRaisesRegex(DummyStageError, "1 attempt"):
+                stage.run("hello")
+
+        self.assertEqual(len(llm_client.calls), 1)
+
+    def test_retryable_provider_error_uses_configured_attempt_count_when_exhausted(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            prompt_path = Path(tmp_dir) / "dummy.md"
+            prompt_path.write_text("Prompt template", encoding="utf-8")
+            llm_client = FakeLLMClient(
+                [
+                    LLMProviderError("rate limited", status_code=429, retryable=True),
+                    LLMProviderError("rate limited", status_code=429, retryable=True),
+                ]
+            )
+            stage = DummyStage(
+                llm_client=llm_client,
+                tracing_client=RecordingTracingClient(),
+                prompt_path=prompt_path,
+                max_retries=2,
+            )
+
+            with self.assertRaisesRegex(DummyStageError, "2 attempts"):
+                stage.run("hello")
+
+        self.assertEqual(len(llm_client.calls), 2)
 
     def test_template_run_wraps_postprocess_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
