@@ -7,7 +7,11 @@ import json
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
-from app.llm.runner import LLMRunnerProviderError, LLMRunnerTimeoutError
+from app.llm.runner import (
+    LLMRunnerProviderError,
+    LLMRunnerStructuredOutputError,
+    LLMRunnerTimeoutError,
+)
 from app.main import format_pipeline_error, run
 
 
@@ -31,7 +35,7 @@ class TestMainCliErrors(unittest.TestCase):
 
         self.assertEqual(
             format_pipeline_error(exc),
-            "LLM provider access/credits error.",
+            "Недостаточно доступа или кредитов у провайдера LLM.",
         )
 
     def test_cli_mapping_for_429(self) -> None:
@@ -46,7 +50,7 @@ class TestMainCliErrors(unittest.TestCase):
 
         self.assertEqual(
             format_pipeline_error(exc),
-            "LLM provider is temporarily rate-limited. Please try again later.",
+            "Провайдер LLM временно ограничил частоту запросов. Попробуйте позже.",
         )
 
     def test_cli_mapping_for_timeout(self) -> None:
@@ -54,7 +58,63 @@ class TestMainCliErrors(unittest.TestCase):
 
         self.assertEqual(
             format_pipeline_error(exc),
-            "LLM provider timed out. Please try again later.",
+            "Провайдер LLM не ответил вовремя. Попробуйте позже.",
+        )
+
+    def test_cli_mapping_for_empty_model_response(self) -> None:
+        exc = wrap_exception(
+            LLMRunnerStructuredOutputError(
+                "empty",
+                error_kind="empty_content",
+                attempts_executed=2,
+            )
+        )
+
+        self.assertEqual(
+            format_pipeline_error(exc),
+            "Модель вернула пустой ответ. Попробуйте повторить запрос.",
+        )
+
+    def test_cli_mapping_for_malformed_json(self) -> None:
+        exc = wrap_exception(
+            LLMRunnerStructuredOutputError(
+                "invalid json",
+                error_kind="malformed_json",
+                attempts_executed=2,
+            )
+        )
+
+        self.assertEqual(
+            format_pipeline_error(exc),
+            "Модель вернула некорректный структурированный ответ. Попробуйте повторить запрос.",
+        )
+
+    def test_cli_mapping_for_probably_truncated_json(self) -> None:
+        exc = wrap_exception(
+            LLMRunnerStructuredOutputError(
+                "truncated",
+                error_kind="truncated_json",
+                attempts_executed=2,
+            )
+        )
+
+        self.assertEqual(
+            format_pipeline_error(exc),
+            "Ответ модели был обрезан и не может быть разобран. Попробуйте повторить запрос.",
+        )
+
+    def test_cli_mapping_for_length_finish(self) -> None:
+        exc = wrap_exception(
+            LLMRunnerStructuredOutputError(
+                "length",
+                error_kind="length_finish",
+                attempts_executed=2,
+            )
+        )
+
+        self.assertEqual(
+            format_pipeline_error(exc),
+            "Ответ модели был обрезан из-за лимита генерации. Попробуйте сократить бриф или увеличить лимит ответа.",
         )
 
     def test_normalize_only_success_path_is_unchanged(self) -> None:

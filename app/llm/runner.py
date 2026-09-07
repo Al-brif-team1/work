@@ -10,7 +10,12 @@ from typing import Any, Callable, Generic, Sequence, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.llm.client import LLMClient, LLMProviderError, Message
+from app.llm.client import (
+    LLMClient,
+    LLMProviderError,
+    LLMStructuredOutputError,
+    Message,
+)
 from app.tracing.tracing import NoOpTracingClient, TracingClient, get_tracing_client
 
 TPayload = TypeVar("TPayload", bound=BaseModel)
@@ -84,6 +89,23 @@ class LLMRunnerProviderError(LLMRunnerError):
 
 class LLMRunnerStructuredOutputError(LLMRunnerError):
     """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_kind: str = "validation_error",
+        provider_metadata: dict[str, Any] | None = None,
+        content_length: int | None = None,
+        retryable: bool = True,
+        attempts_executed: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_kind = error_kind
+        self.provider_metadata = provider_metadata or {}
+        self.content_length = content_length
+        self.retryable = retryable
+        self.attempts_executed = attempts_executed
 
 
 class LLMRunner:
@@ -245,7 +267,11 @@ class LLMRunner:
                     status = (
                         "timeout"
                         if isinstance(exc, LLMRunnerTimeoutError)
-                        else "provider error"
+                        else (
+                            f"structured output error:{exc.error_kind}"
+                            if isinstance(exc, LLMRunnerStructuredOutputError)
+                            else "provider error"
+                        )
                     )
                     self._logger.warning(
                         "LLM attempt finished: trace_name=%s attempt=%s status=%s latency_seconds=%.3f",
@@ -272,6 +298,12 @@ class LLMRunner:
                                     else "failed"
                                 ),
                                 "error": str(exc),
+                                "error_kind": getattr(exc, "error_kind", None),
+                                "provider_metadata": getattr(
+                                    exc,
+                                    "provider_metadata",
+                                    None,
+                                ),
                             }
                         )
                     if not self._is_retryable_error(exc):
@@ -293,6 +325,15 @@ class LLMRunner:
             status_code = last_error.status_code
             error_code = last_error.error_code
             retryable = last_error.retryable
+        if isinstance(last_error, LLMRunnerStructuredOutputError):
+            raise LLMRunnerStructuredOutputError(
+                f"LLM structured output failed after {self._max_retries} attempts: {last_error}",
+                error_kind=last_error.error_kind,
+                provider_metadata=last_error.provider_metadata,
+                content_length=last_error.content_length,
+                retryable=last_error.retryable,
+                attempts_executed=self._max_retries,
+            ) from last_error
         raise LLMRunnerProviderError(
             f"LLM request failed after {self._max_retries} attempts",
             status_code=status_code,
@@ -353,6 +394,20 @@ class LLMRunner:
                 f"LLM provider request failed: {exc}",
                 status_code=exc.status_code,
                 error_code=exc.error_code,
+                retryable=exc.retryable,
+            ) from exc
+        except LLMStructuredOutputError as exc:
+            self._logger.warning(
+                "LLM structured output parse failed: error_kind=%s content_length=%s provider_metadata=%r",
+                exc.error_kind,
+                exc.content_length,
+                exc.provider_metadata,
+            )
+            raise LLMRunnerStructuredOutputError(
+                str(exc),
+                error_kind=exc.error_kind,
+                provider_metadata=exc.provider_metadata,
+                content_length=exc.content_length,
                 retryable=exc.retryable,
             ) from exc
         except Exception as exc:
@@ -556,7 +611,7 @@ class LLMRunner:
         if isinstance(exc, LLMRunnerTimeoutError):
             return True
         if isinstance(exc, LLMRunnerStructuredOutputError):
-            return True
+            return exc.retryable
         if isinstance(exc, LLMRunnerProviderError):
             return exc.retryable
         return True
