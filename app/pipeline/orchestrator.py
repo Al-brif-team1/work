@@ -23,6 +23,7 @@ from app.pipeline.extractor import Extractor
 from app.pipeline.mvp_planner import MVPPlannerStage
 from app.pipeline.question_generator import TemplateQuestionGeneratorStage
 from app.pipeline.response_writer import ResponseWriterStage
+from app.pipeline.security import SecurityGateStage
 from app.prompts import PromptManager
 from app.schemas import AIContext, BriefAnalysisResult, BriefInput
 from app.tracing.tracing import TracingClient, get_tracing_client
@@ -92,6 +93,7 @@ class BriefAnalysisPipeline:
         return cls(
             stages=[
                 EmptyBriefRejectionStage(tracing_client=tracing),
+                SecurityGateStage(tracing_client=tracing),
                 Extractor(
                     llm_runner=llm_runner,
                     tracing_client=tracing,

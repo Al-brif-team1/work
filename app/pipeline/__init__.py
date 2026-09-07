@@ -23,6 +23,11 @@ from app.pipeline.question_generator import (
 from app.pipeline.mvp_planner import MVPPlannerError, MVPPlannerStage
 from app.pipeline.orchestrator import BriefAnalysisPipeline, BriefAnalysisPipelineError
 from app.pipeline.response_writer import ResponseWriterError, ResponseWriterStage
+from app.pipeline.security import (
+    PROMPT_INJECTION_REASON_CODE,
+    PROMPT_INJECTION_RULE_KEY,
+    SecurityGateStage,
+)
 from app.pipeline.result_builder import (
     BriefAnalysisResultBuilder,
     BriefAnalysisResultError,
@@ -79,6 +84,9 @@ __all__ = [
     "BriefAnalysisResultError",
     "ResponseWriterError",
     "ResponseWriterStage",
+    "PROMPT_INJECTION_REASON_CODE",
+    "PROMPT_INJECTION_RULE_KEY",
+    "SecurityGateStage",
     "DeterministicValidator",
     "LLMSelfChecker",
     "SelfCheckError",
