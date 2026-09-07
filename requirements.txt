@@ -1,4 +1,5 @@
 langfuse
 openai
+PyYAML
 python-dotenv
 pydantic-settings
