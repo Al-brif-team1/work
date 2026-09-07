@@ -5,13 +5,15 @@
 Приложение - это CLI-инструмент для анализа одного проектного брифа. На вход приходит текст или UTF-8 файл, дальше система:
 
 1. нормализует текст;
-2. извлекает факты через LLM;
-3. проверяет полноту фактов обычным Python-кодом;
-4. делает экспертную LLM-оценку критериев и рисков;
-5. детерминированно выбирает итоговый статус по правилам из `criteria.yaml`;
-6. генерирует уточняющие вопросы по шаблонам;
-7. при необходимости просит LLM предложить MVP;
-8. детерминированно собирает итоговый JSON и черновик ответа заказчику.
+2. отсекает пустые или очевидно бессмысленные брифы до LLM;
+3. проверяет prompt-injection и санитизирует PII перед первым LLM-вызовом;
+4. извлекает факты через LLM;
+5. проверяет полноту фактов обычным Python-кодом;
+6. делает экспертную LLM-оценку критериев, рисков и Traffic Light;
+7. детерминированно выбирает итоговый статус по правилам из `criteria.yaml`;
+8. генерирует уточняющие вопросы по шаблонам;
+9. при необходимости просит LLM предложить MVP;
+10. детерминированно собирает итоговый JSON и черновик ответа заказчику.
 
 Главный production pipeline создаётся в `BriefAnalysisPipeline.from_llm_client()` в `app/pipeline/orchestrator.py`. Реальный порядок этапов такой:
 
@@ -35,6 +37,20 @@ AIContext
 ├── inputs.brief_input
 ├── results: пока пустые
 └── technical.configuration = CriteriaConfig
+     │
+     ▼
+EmptyBriefRejectionStage [PYTHON]
+     │
+     ├── если бриф пустой или очевидно бессмысленный
+     │   └── ResponseWriterStage -> BriefAnalysisResult
+     │
+     ▼
+SecurityGateStage [PYTHON]
+     │
+     ├── если найден prompt injection
+     │   └── ResponseWriterStage -> BriefAnalysisResult
+     │
+     └── иначе обновляет normalized_text санитизированной версией
      │
      ▼
 Extractor [LLM]
@@ -142,7 +158,9 @@ BriefInput
          ├── Config.load()
          ├── LLMClientFactory.create()
          ├── BriefAnalysisPipeline.from_llm_client()
-         ├── pipeline.analyze()
+         ├── add_traffic_light_diagnostics_stage()
+         ├── pipeline.run_context()
+         ├── BriefAnalysisResult.model_validate()
          └── печать BriefAnalysisResult JSON
 ```
 
@@ -195,8 +213,11 @@ BriefInput
 1. загружает настройки через `Config.load()`;
 2. создаёт LLM-клиент через `LLMClientFactory.create(settings)`;
 3. собирает pipeline через `BriefAnalysisPipeline.from_llm_client(...)`;
-4. запускает `pipeline.analyze(brief_input)`;
-5. печатает результат как JSON.
+4. добавляет CLI-only diagnostics stage после `AssessmentStage`;
+5. запускает `pipeline.run_context(brief_input)`;
+6. проверяет, что контекст содержит assessment и финальный payload;
+7. валидирует публичный результат через `BriefAnalysisResult.model_validate(...)`;
+8. печатает результат как JSON.
 
 `try/except` вокруг pipeline ловит `RuntimeError` и `BriefAnalysisPipelineError`. Это граница приложения: внутренние ошибки превращаются в сообщение `Pipeline error: ...` и код возврата `1`.
 
@@ -390,8 +411,7 @@ AIContext
 │   ├── assessment_result: AssessmentResult | None
 │   ├── arbitration_result: ArbitrationResult | None
 │   ├── clarification_result: QuestionGenerationResult | None
-│   ├── mvp_planning_result: MVPPlanningResult | None
-│   └── self_check_result: SelfCheckResult | None
+│   └── mvp_planning_result: MVPPlanningResult | None
 ├── response: ResponseState
 │   ├── text: str | None
 │   └── payload: dict[str, Any] | None
@@ -428,17 +448,20 @@ BriefAnalysisPipeline.from_llm_client(llm_client)
      │
      ├── tracing = get_tracing_client()
      ├── config = get_criteria_config()
+     ├── traffic_light = get_traffic_light_config()
      ├── prompts = PromptManager()
      ├── llm_runner = LLMRunner(...)
      │
      └── stages:
-         1. Extractor
-         2. CompletenessCheckStage
-         3. AssessmentStage
-         4. DeterministicArbiterStage
-         5. TemplateQuestionGeneratorStage
-         6. MVPPlannerStage
-         7. ResponseWriterStage
+         1. EmptyBriefRejectionStage
+         2. SecurityGateStage
+         3. Extractor
+         4. CompletenessCheckStage
+         5. AssessmentStage
+         6. DeterministicArbiterStage
+         7. TemplateQuestionGeneratorStage
+         8. MVPPlannerStage
+         9. ResponseWriterStage
 ```
 
 ## Импорты
@@ -1025,8 +1048,10 @@ LLM-stage для аналитической оценки проекта.
 
 - `context`;
 - `criteria_config`;
+- `traffic_light_config`;
 - список `criteria`;
-- список `risk_types`.
+- список `risk_types`;
+- список `restricted_topics`.
 
 ### Что делает
 
@@ -1037,7 +1062,8 @@ LLM-stage для аналитической оценки проекта.
    - completeness result;
    - criteria;
    - risk types;
-   - retrieved context.
+   - restricted topics;
+   - traffic-light config.
 3. Запускает LLM через `LLMRunner`.
 4. Ожидает `AssessmentPayload`.
 5. Нормализует текстовые поля в критериях, рисках и evidence.
@@ -1844,6 +1870,8 @@ BriefAnalysisResult
 BriefInputFactory                  [PYTHON]
 BriefInputNormalizer               [PYTHON]
 AIContext.from_brief               [PYTHON]
+EmptyBriefRejectionStage           [PYTHON]
+SecurityGateStage                  [PYTHON]
 Extractor                          [LLM]
 CompletenessCheckStage             [PYTHON]
 AssessmentPreparation              [PYTHON]
@@ -1864,7 +1892,7 @@ LLM-вызовы:
 
 2. `AssessmentStage`
    - prompt: `prompts/assessment.md`;
-   - input: normalized brief, extracted brief, completeness result, criteria, risk types, optional retrieved context;
+   - input: normalized brief, extracted brief, completeness result, criteria, risk types, restricted topics, traffic-light config;
    - output model: `AssessmentPayload`.
 
 3. `MVPPlannerStage`
@@ -1879,11 +1907,15 @@ LLM-вызовы:
 
 `Extractor` отделён от `AssessmentStage`, потому что извлечение фактов и оценка качества - разные задачи. Если их смешать, LLM может начать делать выводы там, где нужны только факты.
 
+`EmptyBriefRejectionStage` стоит до LLM-вызовов, потому что пустой или почти пустой ввод не нужно отправлять модели. Такой бриф сразу получает публичный ответ через тот же `ResponseWriterStage`.
+
+`SecurityGateStage` стоит перед `Extractor`, чтобы prompt-injection не попал в LLM-этапы, а PII была замаскирована в `normalized_text` до дальнейшей обработки. Если security-проверка блокирует бриф, stage сам собирает минимальный контекст и завершает pipeline через `short_circuit_pipeline`.
+
 `CompletenessCheckStage` отделён от LLM, потому что полнота по обязательным полям - это правило, а не творческая оценка. Код может прозрачно объяснить, какое поле отсутствует.
 
-`AssessmentStage` использует LLM, потому что риски и критерии часто требуют интерпретации текста.
+`AssessmentStage` использует LLM, потому что риски, критерии и сопоставление задач с Traffic Light часто требуют интерпретации текста. Traffic Light не является RAG: правила читаются из `config/traffic_light.yaml` через `TrafficLightLoader`, передаются в prompt как `traffic_light_config`, затем нормализуются в `AssessmentResult.traffic_light`.
 
-`DeterministicArbiterStage` отделён от LLM, потому что финальное решение должно быть воспроизводимым. LLM даёт аналитические сигналы, но не управляет итоговым статусом напрямую.
+`DeterministicArbiterStage` отделён от LLM, потому что финальное решение должно быть воспроизводимым. LLM даёт аналитические сигналы, включая `AssessmentResult.traffic_light.status`, но не управляет итоговым статусом напрямую.
 
 `TemplateQuestionGeneratorStage` не использует LLM, потому что вопросы по missing fields можно стабильно хранить в JSON-шаблонах.
 
@@ -1893,13 +1925,9 @@ LLM-вызовы:
 
 # Компоненты вне основного production pipeline
 
-В репозитории есть дополнительные модули, которые экспортируются или тестируются, но не входят в список stages, создаваемый `BriefAnalysisPipeline.from_llm_client()`:
+Основной production pipeline одного брифа через `app/main.py` собирается только списком stages из `BriefAnalysisPipeline.from_llm_client()`. Security-модули не относятся к этому разделу: `SecurityGateStage` использует `app/security/*` и запускается перед `Extractor`.
 
-- `app/pipeline/self_check.py`;
-- часть `app/knowledge/*`;
-- security-модули `app/security/*`.
-
-Они могут быть полезны для расширения системы, тестов или будущих сценариев, но в текущем production pipeline одного брифа через `app/main.py` они не запускаются. Поэтому в основной схеме выше они не показаны как обязательные этапы.
+В текущем tracked коде нет отдельного SelfChecker-stage и нет RAG/knowledge retriever как части production architecture. Traffic Light реализован через конфигурацию `config/traffic_light.yaml`, loader, `AssessmentStage` и `DeterministicArbiterStage`.
 
 # Короткая карта файлов
 
