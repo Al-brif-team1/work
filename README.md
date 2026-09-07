@@ -3,30 +3,38 @@
 Python-ядро для анализа внешних брифов заказчиков на студенческие проекты
 «Мастерской».
 
-Система загружает и нормализует один бриф, извлекает структурированные факты с
-помощью LLM, детерминированно проверяет полноту данных, выполняет один
-объединённый LLM-этап `Assessment`, применяет настраиваемые правила арбитража,
-генерирует уточняющие вопросы по шаблонам, при необходимости формирует MVP-план
-и возвращает структурированный JSON.
+Система загружает и нормализует один бриф, отсекает пустой или опасный ввод до
+LLM, извлекает структурированные факты с помощью LLM, детерминированно проверяет
+полноту данных, выполняет один объединённый LLM-этап `Assessment`, применяет
+настраиваемые правила арбитража, генерирует уточняющие вопросы по шаблонам, при
+необходимости формирует MVP-план и возвращает структурированный JSON.
 
 ## Пайплайн
 
 1. `BriefInputFactory` загружает текст или UTF-8 файл и нормализует пробелы.
-2. `Extractor` извлекает фактические данные в `ExtractedBrief`.
-3. `CompletenessCheckStage` проверяет обязательные поля из `config/criteria.yaml`.
-4. `AssessmentStage` оценивает критерии и риски за один LLM-вызов. Если бриф попал
+2. `EmptyBriefRejectionStage` отклоняет пустой или очевидно бессмысленный ввод
+   без LLM-вызова.
+3. `SecurityGateStage` проверяет prompt injection, санитизирует PII и при
+   блокировке завершает pipeline публичным reject-результатом без LLM.
+4. `Extractor` извлекает фактические данные в `ExtractedBrief`.
+5. `CompletenessCheckStage` проверяет обязательные поля из `config/criteria.yaml`.
+6. `AssessmentStage` оценивает критерии, риски и Traffic Light за один LLM-вызов. Если бриф попал
    в список запрещённых тем из `config/criteria.yaml`, этап отвечает детерминированно
    и модель не вызывает.
-5. `DeterministicArbiterStage` вычисляет итоговую рекомендацию по правилам.
-6. `TemplateQuestionGeneratorStage` генерирует вопросы без LLM-вызовов.
-7. `MVPPlannerStage` вызывает LLM только если Arbiter вернул `SIMPLIFY`.
-8. `ResponseWriterStage` детерминированно формирует черновик ответа заказчику на русском языке.
+7. `DeterministicArbiterStage` вычисляет итоговую рекомендацию по правилам.
+8. `TemplateQuestionGeneratorStage` генерирует вопросы без LLM-вызовов.
+9. `MVPPlannerStage` вызывает LLM только если Arbiter вернул `SIMPLIFY`.
+10. `ResponseWriterStage` детерминированно формирует черновик ответа заказчику на русском языке.
 
 Типичная стоимость LLM:
 
 - Бриф по запрещённой теме: только `Extractor` = 1 LLM-вызов.
 - Готовый бриф или бриф с уточнениями: `Extractor` + `Assessment` = 2 LLM-вызова.
 - Бриф, которому нужно упрощение: `Extractor` + `Assessment` + `MVPPlanner` = 3 LLM-вызова.
+
+`EmptyBriefRejectionStage`, `SecurityGateStage`, `CompletenessCheckStage`,
+`DeterministicArbiterStage`, `TemplateQuestionGeneratorStage` и
+`ResponseWriterStage` работают без LLM.
 
 ## Конфигурация
 
@@ -104,6 +112,17 @@ LOG_LEVEL=INFO
 config/criteria.yaml
 ```
 
+Traffic Light хранится отдельно и используется как конфигурация соответствия задач
+навыкам студентов:
+
+```text
+config/traffic_light.yaml
+```
+
+`AssessmentStage` получает этот конфиг через `TrafficLightLoader`, возвращает
+`AssessmentResult.traffic_light`, а `DeterministicArbiterStage` использует
+`traffic_light.status` как один из сигналов арбитража.
+
 Шаблоны уточняющих вопросов находятся здесь:
 
 ```text
@@ -135,7 +154,7 @@ python -m app.main --text "Нужно сделать сайт для образ�
 Анализ UTF-8 файла:
 
 ```bash
-python -m app.main --file examples/brief.txt
+python -m app.main --file path/to/brief.txt
 ```
 
 Только нормализация ввода без вызова LLM:
@@ -146,7 +165,8 @@ python -m app.main --text "Текст брифа" --normalize-only
 
 ## Результат
 
-CLI возвращает JSON:
+CLI возвращает JSON, соответствующий публичной Pydantic-модели
+`BriefAnalysisResult` из `app/schemas/final_result.py`:
 
 ```json
 {
