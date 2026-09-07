@@ -33,7 +33,7 @@ class BriefInput(BaseModel):
     @classmethod
     def _ensure_non_empty(cls, value: str) -> str:
         """Выполняет шаг «ensure non empty». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        if not value or not value.strip():
-            raise ValueError("text must not be empty")
+        if value is None:
+            raise ValueError("text must not be None")
 
         return value

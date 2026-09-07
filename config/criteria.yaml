@@ -262,8 +262,8 @@ evaluation:
       field_path: project_goal
       title: Project goal
       description: The purpose or problem the project should solve.
-      required: true
-      customer_field_role: blocking
+      required: false
+      customer_field_role: optional
       allowed_values:
         - explicit
     - key: expected_result
@@ -309,7 +309,7 @@ evaluation:
       title: Deadlines
       description: Deadline or timing constraints if they exist.
       required: false
-      customer_field_role: optional
+      customer_field_role: internal
       allowed_values:
         - explicit
     - key: integrations
@@ -443,15 +443,20 @@ evaluation:
           - full platform
       - key: mentor_expertise_required
         title: Mentor expertise required
-        description: The project needs domain, technical, legal or methodological review before launch.
+        description: The brief is understandable enough to assess, but has substantial expert uncertainty that cannot be resolved reliably by ordinary automatic project assessment. Use this when expert review is needed to judge feasibility, correctness, admissibility, team fit, or methodology; do not use it merely because the project is complex, specialized, or requires skilled implementation.
         severity_hint: medium
         signals:
-          - complex_domain
-          - specialized_expertise
-          - legal_risk
+          - feasibility_uncertainty
+          - approach_correctness_uncertainty
+          - legal_admissibility_uncertainty
+          - team_fit_uncertainty
+          - methodological_uncertainty
         evidence_hints:
-          - regulated domain
-          - unclear technical feasibility
+          - feasibility cannot be judged without a domain specialist
+          - correctness of the proposed approach needs expert review
+          - legal admissibility is sensitive but not clearly prohibited
+          - fit to team specialization is unclear despite a sufficient brief
+          - methodology must be reviewed by a specialist
       - key: production_criticality
         title: Production criticality
         description: The customer expects production-grade reliability, security or operational responsibility. This covers work where a defect harms people or breaks a regulated service - a high-risk medical device, air traffic control, or a state platform with a round-the-clock SLA. Judge the responsibility the result carries, not the industry - an analytics dashboard for a clinic is an ordinary project.

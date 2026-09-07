@@ -184,10 +184,10 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
             )
         )
 
-        self.assertEqual(len(result.questions), 2)
-        self.assertEqual(result.questions[0].related_field, "project_goal")
+        self.assertEqual(len(result.questions), 1)
+        self.assertEqual(result.questions[0].related_field, "tasks")
         self.assertFalse(result.technical_info.llm_invoked)
-        self.assertEqual(result.technical_info.question_count, 2)
+        self.assertEqual(result.technical_info.question_count, 1)
         self.assertEqual(result.technical_info.missing_template_fields, [])
 
     def test_clarify_generates_questions_for_blocking_missing_and_clarification(
@@ -195,7 +195,7 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
     ) -> None:
         stage = TemplateQuestionGeneratorStage(
             templates={
-                "project_goal": "What is the main goal?",
+                "tasks": "What tasks should students complete?",
                 "expected_result": "What should be delivered?",
                 "materials": "What materials are available?",
             }
@@ -203,7 +203,7 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
 
         result = stage.generate(
             make_completeness_result(
-                [make_missing_item("project_goal", "Project goal")],
+                [make_missing_item("tasks", "Tasks")],
                 clarification_information=[
                     make_clarification_item("expected_result", "Expected result")
                 ],
@@ -216,7 +216,7 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
 
         self.assertEqual(
             [question.related_field for question in result.questions],
-            ["project_goal", "expected_result"],
+            ["tasks", "expected_result"],
         )
 
     def test_accept_with_clarifications_generates_questions_for_optional_items(
@@ -245,7 +245,7 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
 
         self.assertEqual(
             [question.related_field for question in result.questions],
-            ["materials", "deadlines"],
+            ["materials"],
         )
 
     def test_accept_with_clarifications_generates_traffic_light_yellow_question_for_complete_brief(
@@ -455,11 +455,11 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
 
         self.assertEqual(result.questions, [])
 
-    def test_accept_with_clarifications_skips_blocking_field_misplaced_in_optional_list(
+    def test_accept_with_clarifications_generates_optional_project_goal_question(
         self,
     ) -> None:
         stage = TemplateQuestionGeneratorStage(
-            criteria_config=make_criteria_config({"project_goal": "blocking"}),
+            criteria_config=make_criteria_config({"project_goal": "optional"}),
             templates={"project_goal": "What is the main goal?"},
         )
 
@@ -475,24 +475,27 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(result.questions, [])
+        self.assertEqual(
+            [question.related_field for question in result.questions],
+            ["project_goal"],
+        )
 
     def test_clarify_generates_only_blocking_role_question(self) -> None:
         stage = TemplateQuestionGeneratorStage(
-            criteria_config=make_criteria_config({"project_goal": "blocking"}),
-            templates={"project_goal": "What is the main goal?"},
+            criteria_config=make_criteria_config({"tasks": "blocking"}),
+            templates={"tasks": "What tasks should students complete?"},
         )
 
         result = stage.generate(
             make_completeness_result(
-                [make_missing_item("project_goal", "Project goal")]
+                [make_missing_item("tasks", "Tasks")]
             ),
             arbitration_result=make_arbitration_result(DecisionStatus.clarify),
         )
 
         self.assertEqual(
             [question.related_field for question in result.questions],
-            ["project_goal"],
+            ["tasks"],
         )
 
     def test_accept_with_clarifications_generates_only_optional_role_question(
@@ -551,14 +554,14 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
 
     def test_missing_template_fields_are_reported_without_llm_fallback(self) -> None:
         stage = TemplateQuestionGeneratorStage(
-            templates={"project_goal": "What is the main goal?"},
+            templates={"tasks": "What tasks should students complete?"},
         )
 
         result = stage.generate(
             make_completeness_result(
                 [
-                    make_missing_item("project_goal", "Project goal"),
                     make_missing_item("tasks", "Tasks"),
+                    make_missing_item("expected_result", "Expected result"),
                 ]
             )
         )
@@ -566,7 +569,7 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
         self.assertEqual(result.technical_info.attempts, 0)
         self.assertFalse(result.technical_info.llm_invoked)
         self.assertEqual(len(result.questions), 1)
-        self.assertEqual(result.technical_info.missing_template_fields, ["tasks"])
+        self.assertEqual(result.technical_info.missing_template_fields, ["expected_result"])
 
     def test_includes_assessment_status_in_summary(self) -> None:
         stage = TemplateQuestionGeneratorStage(
@@ -582,13 +585,13 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
 
     def test_template_stage_updates_context_via_base_stage(self) -> None:
         stage = TemplateQuestionGeneratorStage(
-            templates={"project_goal": "Опишите основную цель проекта."}
+            templates={"tasks": "Какие задачи нужно выполнить?"}
         )
         context = AIContext.from_brief(
             BriefInputFactory().from_text("Need a product")
         ).with_completeness_result(
             make_completeness_result(
-                [make_missing_item("project_goal", "Project goal")]
+                [make_missing_item("tasks", "Tasks")]
             )
         )
 
