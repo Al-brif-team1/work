@@ -147,8 +147,6 @@ def _build_assessment_result(
             trace_enabled=False,
             trace_name=PROMPT_INJECTION_REASON_CODE,
             model_name=None,
-            retriever_used=False,
-            retrieved_context_count=0,
             criteria_count=0,
             risk_types_count=0,
             raw_response={

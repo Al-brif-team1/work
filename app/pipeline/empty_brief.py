@@ -116,8 +116,6 @@ def _build_assessment_result() -> AssessmentResult:
             trace_enabled=False,
             trace_name="empty_brief_rejection",
             model_name=None,
-            retriever_used=False,
-            retrieved_context_count=0,
             criteria_count=0,
             risk_types_count=0,
             raw_response=None,

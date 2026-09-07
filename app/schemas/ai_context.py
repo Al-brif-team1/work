@@ -12,7 +12,6 @@ from app.schemas.brief import BriefInput
 from app.schemas.completeness import CompletenessResult
 from app.schemas.decision import ArbitrationResult
 from app.schemas.extraction import ExtractionResult, ExtractedBrief
-from app.schemas.knowledge import SearchResult
 from app.schemas.mvp import MVPPlanningResult
 from app.schemas.question import QuestionGenerationResult
 
@@ -33,14 +32,6 @@ class PipelineInputState(BaseModel):
     def normalized_text(self) -> str:
         """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return self.brief_input.normalized_text
-
-
-class RetrievalState(BaseModel):
-    """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
-
-    results: list[SearchResult] = Field(default_factory=list)
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class PipelineResults(BaseModel):
@@ -91,7 +82,6 @@ class AIContext(BaseModel):
     """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
     inputs: PipelineInputState
-    retrieval: RetrievalState = Field(default_factory=RetrievalState)
     results: PipelineResults = Field(default_factory=PipelineResults)
     response: ResponseState = Field(default_factory=ResponseState)
     technical: PipelineTechnicalState = Field(default_factory=PipelineTechnicalState)
@@ -157,11 +147,6 @@ class AIContext(BaseModel):
     def final_response_payload(self) -> dict[str, Any] | None:
         """Выполняет шаг «final response payload». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.response.payload
-
-    @property
-    def retrieved_context(self) -> list[SearchResult]:
-        """Выполняет шаг «retrieved context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        return self.retrieval.results
 
     @property
     def metadata(self) -> dict[str, Any]:
@@ -234,22 +219,6 @@ class AIContext(BaseModel):
     def with_mvp_planning_result(self, result: MVPPlanningResult) -> "AIContext":
         """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
         return self._with_results(update={"mvp_planning_result": result})
-
-    def with_retrieved_context(self, results: list[SearchResult]) -> "AIContext":
-        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
-        return self.model_copy(
-            update={"retrieval": RetrievalState(results=list(results))}
-        )
-
-    def append_retrieved_context(self, results: list[SearchResult]) -> "AIContext":
-        """Выполняет шаг «append retrieved context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        return self.model_copy(
-            update={
-                "retrieval": RetrievalState(
-                    results=[*self.retrieved_context, *results]
-                )
-            }
-        )
 
     def with_final_response(
         self,

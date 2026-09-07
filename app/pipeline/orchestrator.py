@@ -16,7 +16,7 @@ from app.input import BriefInputFactory
 from app.llm.client import LLMClient
 from app.llm.runner import LLMRunner
 from app.pipeline.arbiter import DeterministicArbiterStage
-from app.pipeline.assessment import AssessmentRetriever, AssessmentStage
+from app.pipeline.assessment import AssessmentStage
 from app.pipeline.completeness import CompletenessCheckStage
 from app.pipeline.empty_brief import EmptyBriefRejectionStage
 from app.pipeline.extractor import Extractor
@@ -60,7 +60,6 @@ class BriefAnalysisPipeline:
         cls,
         llm_client: LLMClient,
         *,
-        retriever: AssessmentRetriever | None = None,
         criteria_config: CriteriaConfig | None = None,
         traffic_light_config: TrafficLightConfig | None = None,
         tracing_client: TracingClient | None = None,
@@ -111,7 +110,6 @@ class BriefAnalysisPipeline:
                     prompt_manager=prompts,
                     max_retries=max_retries,
                     model_name=model_name,
-                    retriever=retriever,
                     criteria_config=config,
                     traffic_light_config=traffic_light,
                 ),

@@ -383,8 +383,6 @@ BriefInput
 AIContext
 ├── inputs: PipelineInputState
 │   └── brief_input: BriefInput
-├── retrieval: RetrievalState
-│   └── results: list[SearchResult]
 ├── results: PipelineResults
 │   ├── extracted_brief: ExtractedBrief | None
 │   ├── extraction_result: ExtractionResult | None
@@ -966,8 +964,7 @@ AssessmentPreparation.prepare()
      ├── validate context
      ├── load CriteriaConfig
      ├── criteria = config.evaluation.criteria
-     ├── risk_types = config.evaluation.risk_analysis.risk_types
-     └── optional retriever.retrieve()
+     └── risk_types = config.evaluation.risk_analysis.risk_types
      │
      ▼
 AssessmentPreparedInput
@@ -993,36 +990,15 @@ AIContext.with_assessment_result()
 
 ## Импорты
 
-`Protocol` используется для `AssessmentRetriever`: stage может работать с любым объектом, у которого есть метод `retrieve(...)`.
-
-`Mapping` нужен для metadata filters retriever-а.
-
 `CriteriaConfig`, `Criterion`, `RiskType` связывают LLM-оценку с конфигом.
 
-`SearchResult` - модель опционального retrieval-контекста.
-
 `CriterionEvaluation` и `Risk` - структурированные элементы, которые LLM должна вернуть.
-
-## `AssessmentRetriever`
-
-Это Protocol для optional retrieval. В production-сборке `BriefAnalysisPipeline.from_llm_client()` параметр `retriever` по умолчанию `None`, поэтому retrieval обычно не используется.
-
-Если retriever передан, `AssessmentPreparation` строит поисковый запрос из:
-
-- normalized brief;
-- project goal;
-- tasks;
-- technologies;
-- integrations;
-- ключей missing information.
-
-Потом результат retrieval добавляется в prompt как `retrieved_context`.
 
 ## `AssessmentPreparation`
 
 Это подготовительный класс. Он не вызывает LLM.
 
-Зачем нужен отдельно: подготовка assessment сложнее, чем просто "взять контекст". Нужно проверить, что previous stages уже отработали, загрузить критерии, риск-типы и optional retrieval.
+Зачем нужен отдельно: подготовка assessment сложнее, чем просто "взять контекст". Нужно проверить, что previous stages уже отработали, загрузить критерии и риск-типы.
 
 `_validate_context()` требует:
 
@@ -1050,9 +1026,7 @@ LLM-stage для аналитической оценки проекта.
 - `context`;
 - `criteria_config`;
 - список `criteria`;
-- список `risk_types`;
-- `retrieved_context`;
-- параметры retrieval.
+- список `risk_types`.
 
 ### Что делает
 
@@ -1119,8 +1093,7 @@ Prompt: `prompts/assessment.md`.
 - `extracted_brief`;
 - `completeness_result`;
 - `criteria`;
-- `risk_types`;
-- `retrieved_context`.
+- `risk_types`.
 
 Ожидаемый результат: JSON по схеме `AssessmentPayload`.
 
@@ -1804,8 +1777,7 @@ Config.load()
           ├── llm_* (max_attempts, timeout_seconds, transport_retries)
           ├── langfuse_*
           ├── debug
-          ├── log_level
-          └── knowledge_*
+          └── log_level
 ```
 
 `pydantic_settings.BaseSettings` умеет брать значения из переменных окружения и `.env`.
@@ -1815,8 +1787,6 @@ Config.load()
 Валидаторы полей отсекают заведомо неверные настройки на старте: температура вне диапазона `0..2`, неположительные `LLM_MAX_ATTEMPTS` и `LLM_TIMEOUT_SECONDS`, `LLM_TOP_P` вне `(0, 1]`, а также `LLM_BASE_URL` без схемы `http://` или `https://`.
 
 `Literal["DEBUG", "INFO", ...]` ограничивает допустимые уровни логирования.
-
-`@model_validator(mode="after")` проверяет связь настроек chunking: `knowledge_chunk_overlap` должен быть меньше `knowledge_chunk_size`.
 
 Секреты из `.env` в документации не раскрываются.
 

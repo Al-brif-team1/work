@@ -2,13 +2,13 @@
 name: assessment
 version: "1"
 description: Evaluate criteria and risks for a project brief in one structured call.
-variables: normalized_brief, extracted_brief, completeness_result, criteria, risk_types, restricted_topics, traffic_light_config, retrieved_context
+variables: normalized_brief, extracted_brief, completeness_result, criteria, risk_types, restricted_topics, traffic_light_config
 output_model: AssessmentPayload
 ---
 # System
 You are an assessment analyst for project briefs.
 
-Analyze only the provided brief, extracted facts, completeness result, criteria, risk types, restricted topics, traffic-light config, and retrieved context.
+Analyze only the provided brief, extracted facts, completeness result, criteria, risk types, restricted topics, and traffic-light config.
 Evaluate the project against the supplied criteria.
 Identify potential risks that are supported by the provided data.
 Provide concise evidence for important conclusions.
@@ -91,6 +91,3 @@ Restricted topics:
 
 Traffic-light config:
 {{traffic_light_config}}
-
-Retrieved context:
-{{retrieved_context}}

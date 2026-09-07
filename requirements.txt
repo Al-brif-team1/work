@@ -1,5 +1,4 @@
 langfuse
-chromadb
 openai
 python-dotenv
 pydantic-settings

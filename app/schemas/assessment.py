@@ -50,8 +50,6 @@ class AssessmentTechnicalInfo(BaseModel):
     trace_enabled: bool = False
     trace_name: str = "assessment.brief"
     model_name: str | None = None
-    retriever_used: bool = False
-    retrieved_context_count: int = 0
     criteria_count: int = 0
     risk_types_count: int = 0
     raw_response: dict[str, Any] | None = None
