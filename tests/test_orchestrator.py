@@ -19,6 +19,7 @@ from app.pipeline import (
     LLMSelfChecker,
     MVPPlannerStage,
     ResponseWriterStage,
+    SecurityGateStage,
     SelfChecker,
     TemplateQuestionGeneratorStage,
 )
@@ -319,6 +320,7 @@ class TestBriefAnalysisPipeline(unittest.TestCase):
 
         expected_stage_types = (
             EmptyBriefRejectionStage,
+            SecurityGateStage,
             Extractor,
             CompletenessCheckStage,
             AssessmentStage,
