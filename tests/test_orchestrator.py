@@ -16,11 +16,9 @@ from app.pipeline import (
     DeterministicArbiterStage,
     EmptyBriefRejectionStage,
     Extractor,
-    LLMSelfChecker,
     MVPPlannerStage,
     ResponseWriterStage,
     SecurityGateStage,
-    SelfChecker,
     TemplateQuestionGeneratorStage,
 )
 from app.schemas import (
@@ -331,12 +329,6 @@ class TestBriefAnalysisPipeline(unittest.TestCase):
         )
         # This is a white-box architecture contract: factory order is part of the migration safety net.
         self.assertEqual(tuple(type(stage) for stage in pipeline._stages), expected_stage_types)
-
-        legacy_stage_types = (
-            SelfChecker,
-            LLMSelfChecker,
-        )
-        self.assertFalse(any(isinstance(stage, legacy_stage_types) for stage in pipeline._stages))
 
     def test_insert_stage_after_adds_stage_after_first_matching_type(self) -> None:
         inserted = ArbiterStageStub()

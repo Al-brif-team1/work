@@ -40,12 +40,6 @@ from app.schemas.final_result import (
     BriefExtractedFields,
     DirectionValue,
 )
-from app.schemas.self_check import (
-    SelfCheckContext,
-    SelfCheckPayload,
-    SelfCheckResult,
-    SelfCheckTechnicalInfo,
-)
 from app.schemas.extraction import (
     ExtractedBrief,
     ExtractedFact,
@@ -93,10 +87,6 @@ __all__ = [
     "BriefAssessmentSummary",
     "BriefExtractedFields",
     "DirectionValue",
-    "SelfCheckContext",
-    "SelfCheckPayload",
-    "SelfCheckResult",
-    "SelfCheckTechnicalInfo",
     "CompletenessItem",
     "CompletenessLevel",
     "CompletenessResult",
