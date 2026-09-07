@@ -11,7 +11,11 @@ from typing import Sequence
 from app.config import Config
 from app.input import BriefInputError, BriefInputFactory
 from app.llm.factory import LLMClientFactory
-from app.llm.runner import LLMRunnerProviderError, LLMRunnerTimeoutError
+from app.llm.runner import (
+    LLMRunnerProviderError,
+    LLMRunnerStructuredOutputError,
+    LLMRunnerTimeoutError,
+)
 from app.pipeline import AssessmentStage, BriefAnalysisPipeline, BriefAnalysisPipelineError
 from app.schemas import AIContext, AssessmentResult, BriefAnalysisResult
 
@@ -51,26 +55,37 @@ def add_traffic_light_diagnostics_stage(pipeline: BriefAnalysisPipeline) -> None
 
 def format_pipeline_error(exc: Exception) -> str:
     """Return a safe short CLI message for known technical LLM failures."""
+    structured_error = _find_exception(exc, LLMRunnerStructuredOutputError)
     llm_error = _find_exception(exc, LLMRunnerProviderError)
     timeout_error = _find_exception(exc, LLMRunnerTimeoutError)
     if timeout_error is not None:
-        return "LLM provider timed out. Please try again later."
+        return "Провайдер LLM не ответил вовремя. Попробуйте позже."
+
+    if structured_error is not None:
+        error_kind = getattr(structured_error, "error_kind", None)
+        if error_kind == "empty_content":
+            return "Модель вернула пустой ответ. Попробуйте повторить запрос."
+        if error_kind == "length_finish":
+            return "Ответ модели был обрезан из-за лимита генерации. Попробуйте сократить бриф или увеличить лимит ответа."
+        if error_kind == "truncated_json":
+            return "Ответ модели был обрезан и не может быть разобран. Попробуйте повторить запрос."
+        return "Модель вернула некорректный структурированный ответ. Попробуйте повторить запрос."
 
     if llm_error is None:
         return str(exc)
 
     if llm_error.status_code in {401, 403}:
-        return "LLM provider authentication/access error."
+        return "Ошибка доступа к провайдеру LLM."
     if llm_error.status_code == 402:
-        return "LLM provider access/credits error."
+        return "Недостаточно доступа или кредитов у провайдера LLM."
     if llm_error.status_code == 429:
-        return "LLM provider is temporarily rate-limited. Please try again later."
+        return "Провайдер LLM временно ограничил частоту запросов. Попробуйте позже."
     if llm_error.status_code in {500, 502, 503, 504}:
-        return "LLM provider is temporarily unavailable. Please try again later."
+        return "Провайдер LLM временно недоступен. Попробуйте позже."
     if llm_error.retryable:
-        return "LLM provider is temporarily unavailable. Please try again later."
+        return "Провайдер LLM временно недоступен. Попробуйте позже."
 
-    return "LLM provider request failed."
+    return "Запрос к провайдеру LLM завершился ошибкой."
 
 
 def _find_exception(exc: BaseException, target_type: type[BaseException]) -> BaseException | None:

@@ -6,7 +6,12 @@ from typing import Any
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
 from app.config import Settings
-from app.llm.client import LLMClient, LLMProviderError, Message
+from app.llm.client import (
+    LLMClient,
+    LLMProviderError,
+    LLMStructuredOutputError,
+    Message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +57,17 @@ class OpenRouterLLMClient(LLMClient):
         **kwargs: Any,
     ) -> str:
         """Выполняет шаг «generate». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        response = self._create_completion(messages, **kwargs)
+        content = response.choices[0].message.content
+        return content or ""
+
+    def _create_completion(
+        self,
+        messages: Sequence[Message],
+        **kwargs: Any,
+    ) -> Any:
         try:
-            response = self._client.chat.completions.create(
+            return self._client.chat.completions.create(
                 model=self._model,
                 messages=list(messages),
                 **self._merge_generation_kwargs(kwargs),
@@ -81,9 +95,6 @@ class OpenRouterLLMClient(LLMClient):
                 retryable=retryable,
             ) from exc
 
-        content = response.choices[0].message.content
-        return content or ""
-
     def generate_json(
         self,
         messages: Sequence[Message],
@@ -91,26 +102,50 @@ class OpenRouterLLMClient(LLMClient):
     ) -> dict[str, Any]:
         """Выполняет шаг «generate json». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         response_format = kwargs.pop("response_format", {"type": "json_object"})
-        response_text = self.generate(
-            messages=messages,
+        response = self._create_completion(
+            messages,
             response_format=response_format,
             **kwargs,
         )
+        choice = response.choices[0]
+        response_text = choice.message.content or ""
+        provider_metadata = self._extract_response_metadata(response, choice)
+        content_length = len(response_text)
 
         try:
             parsed = json.loads(response_text)
         except json.JSONDecodeError as exc:
+            error_kind = self._classify_json_failure(
+                response_text=response_text,
+                decode_error=exc,
+                finish_reason=provider_metadata.get("finish_reason"),
+            )
             logger.exception(
-                "LLM response JSON parsing failed: error_type=%s error=%s response_length=%s raw_response_text=%r",
+                "LLM response JSON parsing failed: error_type=%s error=%s error_kind=%s response_length=%s finish_reason=%s response_model=%s response_id=%s usage=%r raw_response_text=%r",
                 type(exc).__name__,
                 str(exc),
-                len(response_text),
+                error_kind,
+                content_length,
+                provider_metadata.get("finish_reason"),
+                provider_metadata.get("model"),
+                provider_metadata.get("id"),
+                provider_metadata.get("usage"),
                 response_text,
             )
-            raise RuntimeError("LLM response is not valid JSON") from exc
+            raise LLMStructuredOutputError(
+                "LLM response is not valid JSON",
+                error_kind=error_kind,
+                provider_metadata=provider_metadata,
+                content_length=content_length,
+            ) from exc
 
         if not isinstance(parsed, dict):
-            raise RuntimeError("LLM JSON response must be an object")
+            raise LLMStructuredOutputError(
+                "LLM JSON response must be an object",
+                error_kind="malformed_json",
+                provider_metadata=provider_metadata,
+                content_length=content_length,
+            )
 
         return parsed
 
@@ -153,3 +188,55 @@ class OpenRouterLLMClient(LLMClient):
             if code is not None:
                 return str(code)
         return type(exc).__name__
+
+    @classmethod
+    def _classify_json_failure(
+        cls,
+        *,
+        response_text: str,
+        decode_error: json.JSONDecodeError,
+        finish_reason: object,
+    ) -> str:
+        if finish_reason == "length":
+            return "length_finish"
+        if not response_text:
+            return "empty_content"
+        if cls._looks_truncated_json(response_text, decode_error):
+            return "truncated_json"
+        return "malformed_json"
+
+    @staticmethod
+    def _looks_truncated_json(
+        response_text: str,
+        decode_error: json.JSONDecodeError,
+    ) -> bool:
+        message = decode_error.msg.lower()
+        stripped = response_text.rstrip()
+        if "unterminated string" in message:
+            return True
+        if not stripped:
+            return False
+        if stripped[0] in ("{", "[") and stripped[-1] not in ("}", "]"):
+            return True
+        return False
+
+    @staticmethod
+    def _extract_response_metadata(response: Any, choice: Any) -> dict[str, Any]:
+        metadata: dict[str, Any] = {
+            "finish_reason": getattr(choice, "finish_reason", None),
+        }
+        for key in ("id", "model", "created", "system_fingerprint"):
+            value = getattr(response, key, None)
+            if value is not None:
+                metadata[key] = value
+
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            if hasattr(usage, "model_dump"):
+                metadata["usage"] = usage.model_dump(mode="json")
+            elif isinstance(usage, dict):
+                metadata["usage"] = dict(usage)
+            else:
+                metadata["usage"] = repr(usage)
+
+        return metadata

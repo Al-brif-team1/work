@@ -15,6 +15,7 @@ from app.llm import (
     LLMRunner,
     LLMRunnerProviderError,
     LLMRunnerStructuredOutputError,
+    LLMStructuredOutputError,
 )
 from app.llm.openrouter import OpenRouterLLMClient
 
@@ -248,8 +249,17 @@ class TestLLMRunner(unittest.TestCase):
         messages = llm_client.calls[0]["messages"]
         self.assertEqual(messages[0]["content"], "Return JSON Schema.")
 
-    def test_invalid_json_from_client_is_wrapped_as_provider_error(self) -> None:
-        llm_client = FakeLLMClient([RuntimeError("LLM response is not valid JSON")])
+    def test_invalid_json_from_client_is_wrapped_as_structured_output_error(self) -> None:
+        llm_client = FakeLLMClient(
+            [
+                LLMStructuredOutputError(
+                    "LLM response is not valid JSON",
+                    error_kind="malformed_json",
+                    provider_metadata={"finish_reason": "stop", "model": "m"},
+                    content_length=8,
+                )
+            ]
+        )
         runner = LLMRunner(
             llm_client=llm_client,
             tracing_client=RecordingTracingClient(),
@@ -257,7 +267,7 @@ class TestLLMRunner(unittest.TestCase):
             timeout_seconds=2,
         )
 
-        with self.assertRaises(LLMRunnerProviderError) as context:
+        with self.assertRaises(LLMRunnerStructuredOutputError) as context:
             runner.run_json(
                 messages=[{"role": "user", "content": "hello"}],
                 response_model=RunnerPayload,
@@ -265,12 +275,40 @@ class TestLLMRunner(unittest.TestCase):
                 span_name="runner.test.llm",
             )
 
-        self.assertIsInstance(context.exception.__cause__, LLMRunnerProviderError)
+        self.assertIsInstance(
+            context.exception.__cause__,
+            LLMRunnerStructuredOutputError,
+        )
+        self.assertEqual(context.exception.error_kind, "malformed_json")
+        self.assertEqual(context.exception.content_length, 8)
+        self.assertEqual(context.exception.provider_metadata["model"], "m")
         self.assertIn("not valid JSON", str(context.exception.__cause__))
 
     def test_invalid_json_logs_raw_response_for_each_attempt(self) -> None:
         llm_client = object.__new__(OpenRouterLLMClient)
-        llm_client.generate = lambda messages, **kwargs: "```json\n{}\n```"
+        llm_client._create_completion = lambda messages, **kwargs: type(
+            "Response",
+            (),
+            {
+                "id": "response-1",
+                "model": "provider-model",
+                "usage": {"completion_tokens": 4},
+                "choices": [
+                    type(
+                        "Choice",
+                        (),
+                        {
+                            "finish_reason": "stop",
+                            "message": type(
+                                "Message",
+                                (),
+                                {"content": "```json\n{}\n```"},
+                            )(),
+                        },
+                    )()
+                ],
+            },
+        )()
         runner = LLMRunner(
             llm_client=llm_client,
             tracing_client=RecordingTracingClient(),
@@ -279,7 +317,7 @@ class TestLLMRunner(unittest.TestCase):
         )
 
         with self.assertLogs("app.llm.openrouter", level="ERROR") as logs:
-            with self.assertRaises(LLMRunnerProviderError):
+            with self.assertRaises(LLMRunnerStructuredOutputError):
                 runner.run_json(
                     messages=[{"role": "user", "content": "hello"}],
                     response_model=RunnerPayload,
@@ -290,7 +328,12 @@ class TestLLMRunner(unittest.TestCase):
         self.assertEqual(len(logs.output), 2)
         for entry in logs.output:
             self.assertIn("JSONDecodeError", entry)
+            self.assertIn("error_kind=malformed_json", entry)
             self.assertIn("response_length=14", entry)
+            self.assertIn("finish_reason=stop", entry)
+            self.assertIn("response_model=provider-model", entry)
+            self.assertIn("response_id=response-1", entry)
+            self.assertIn("usage={'completion_tokens': 4}", entry)
             self.assertIn("raw_response_text='```json\\n{}\\n```'", entry)
 
     def test_structured_validation_errors_are_centralized(self) -> None:
@@ -302,7 +345,7 @@ class TestLLMRunner(unittest.TestCase):
             timeout_seconds=2,
         )
 
-        with self.assertRaises(LLMRunnerProviderError) as context:
+        with self.assertRaises(LLMRunnerStructuredOutputError) as context:
             runner.run_json(
                 messages=[{"role": "user", "content": "hello"}],
                 response_model=RunnerPayload,
@@ -355,7 +398,7 @@ class TestLLMRunner(unittest.TestCase):
         )
 
         with self.assertLogs("app.llm.runner", level="ERROR") as logs:
-            with self.assertRaises(LLMRunnerProviderError):
+            with self.assertRaises(LLMRunnerStructuredOutputError):
                 runner.run_json(
                     messages=[{"role": "user", "content": "hello"}],
                     response_model=RunnerPayload,
@@ -451,6 +494,72 @@ class TestLLMRunner(unittest.TestCase):
         self.assertIn("LLM attempt starting: trace_name=runner.test", joined_logs)
         self.assertIn("status=timeout", joined_logs)
         self.assertIn("latency_seconds=", joined_logs)
+
+    def test_structured_output_error_is_retried_without_becoming_provider_error(self) -> None:
+        llm_client = FakeLLMClient(
+            [
+                LLMStructuredOutputError(
+                    "empty",
+                    error_kind="empty_content",
+                    provider_metadata={"finish_reason": "stop"},
+                    content_length=0,
+                ),
+                {"value": "ok"},
+            ]
+        )
+        runner = LLMRunner(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            max_retries=2,
+            timeout_seconds=2,
+        )
+
+        result = runner.run_json(
+            messages=[{"role": "user", "content": "hello"}],
+            response_model=RunnerPayload,
+            trace_name="runner.test",
+            span_name="runner.test.llm",
+        )
+
+        self.assertEqual(result.payload.value, "ok")
+        self.assertEqual(len(llm_client.calls), 2)
+
+    def test_length_finish_survives_after_retries_are_exhausted(self) -> None:
+        llm_client = FakeLLMClient(
+            [
+                LLMStructuredOutputError(
+                    "truncated",
+                    error_kind="length_finish",
+                    provider_metadata={"finish_reason": "length", "id": "r1"},
+                    content_length=21,
+                ),
+                LLMStructuredOutputError(
+                    "truncated",
+                    error_kind="length_finish",
+                    provider_metadata={"finish_reason": "length", "id": "r2"},
+                    content_length=22,
+                ),
+            ]
+        )
+        runner = LLMRunner(
+            llm_client=llm_client,
+            tracing_client=RecordingTracingClient(),
+            max_retries=2,
+            timeout_seconds=2,
+        )
+
+        with self.assertRaises(LLMRunnerStructuredOutputError) as context:
+            runner.run_json(
+                messages=[{"role": "user", "content": "hello"}],
+                response_model=RunnerPayload,
+                trace_name="runner.test",
+                span_name="runner.test.llm",
+            )
+
+        self.assertEqual(len(llm_client.calls), 2)
+        self.assertEqual(context.exception.error_kind, "length_finish")
+        self.assertEqual(context.exception.provider_metadata["id"], "r2")
+        self.assertEqual(context.exception.attempts_executed, 2)
 
     def _assert_provider_status_is_retried(self, status_code: int) -> None:
         llm_client = FakeLLMClient(
