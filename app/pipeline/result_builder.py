@@ -19,6 +19,7 @@ from app.schemas import (
     ExtractedFact,
     RiskSeverity,
 )
+from app.schemas.risk import Risk
 from app.schemas.final_result import DirectionValue
 
 
@@ -151,6 +152,14 @@ _GENERIC_DEVELOPMENT_PRODUCT_SIGNALS = frozenset(
         "приложение",
         "мобильное приложение",
         "портал",
+    }
+)
+
+_REJECT_BUSINESS_RISK_TYPES = frozenset(
+    {
+        "restricted_topic",
+        "out_of_scope_request",
+        "production_criticality",
     }
 )
 
@@ -432,6 +441,7 @@ class BriefAnalysisResultBuilder:
         assert assessment is not None
         assert arbitration is not None
 
+        public_risks = self._public_risks(context)
         return BriefAnalysisResult(
             summary=self._build_summary(context),
             extracted_fields=BriefExtractedFields(
@@ -476,7 +486,7 @@ class BriefAnalysisResultBuilder:
                     arbitration.confidence or assessment.confidence
                 ),
                 reasons=self._build_public_reasons(context),
-                risks=[risk.description for risk in assessment.risks],
+                risks=[risk.description for risk in public_risks],
             ),
             clarifying_questions=[
                 item.question
@@ -672,23 +682,46 @@ class BriefAnalysisResultBuilder:
         elif status is DecisionStatus.simplify:
             reasons.extend(
                 risk.description
-                for risk in assessment.risks
+                for risk in self._public_risks(context)
                 if risk.type == "scope_too_large"
             )
         elif status is DecisionStatus.mentor_review:
             reasons.extend(
                 risk.description
-                for risk in assessment.risks
+                for risk in self._public_risks(context)
                 if risk.type == "mentor_expertise_required"
             )
         elif status is DecisionStatus.reject:
             reasons.extend(
                 risk.description
-                for risk in assessment.risks
+                for risk in self._public_risks(context)
                 if risk.severity in {RiskSeverity.high, RiskSeverity.critical}
             )
 
         return deduplicate(reasons)
+
+    @staticmethod
+    def _public_risks(context: AIContext) -> list[Risk]:
+        assessment = context.assessment_result
+        if assessment is None:
+            return []
+        if context.arbitration_result is None:
+            return list(assessment.risks)
+
+        matched_rule = context.arbitration_result.metadata.get("matched_rule")
+        if matched_rule == "reject_by_traffic_light_red":
+            return []
+        if matched_rule == "simplify_scope_too_large":
+            return [
+                risk for risk in assessment.risks if risk.type == "scope_too_large"
+            ]
+        if matched_rule == "reject_by_business_risk":
+            return [
+                risk
+                for risk in assessment.risks
+                if risk.type in _REJECT_BUSINESS_RISK_TYPES
+            ]
+        return list(assessment.risks)
 
     @staticmethod
     def _criterion_explanations(
