@@ -450,6 +450,59 @@ def make_mvp_planning_result() -> MVPPlanningResult:
     )
 
 
+def context_with_public_filter_inputs(
+    *,
+    matched_rule: str,
+    status: DecisionStatus = DecisionStatus.reject,
+) -> AIContext:
+    context = make_context(status)
+    assessment = context.assessment_result
+    arbitration = context.arbitration_result
+    assert assessment is not None
+    assert arbitration is not None
+
+    context = context.with_assessment_result(
+        assessment.model_copy(
+            update={
+                "risks": [
+                    Risk(
+                        type="production_criticality",
+                        description="Заказчик ожидает промышленной надёжности.",
+                        severity=RiskSeverity.critical,
+                    ),
+                    Risk(
+                        type="scope_too_large",
+                        description="Слишком широкий объём.",
+                        severity=RiskSeverity.high,
+                    ),
+                ],
+                "has_risks": True,
+                "traffic_light": TrafficLightResult(
+                    status=TrafficLightStatus.red,
+                    matches=[
+                        TrafficLightMatch(
+                            task="Большой информационный сайт",
+                            matched_rule="Слишком сложный сайт",
+                            status=TrafficLightStatus.red,
+                            reason="Задача не входит в формат студенческого проекта.",
+                        )
+                    ],
+                ),
+            }
+        )
+    ).with_arbitration_result(
+        arbitration.model_copy(
+            update={
+                "final_status": status,
+                "metadata": {"matched_rule": matched_rule},
+            }
+        )
+    )
+    if status is DecisionStatus.simplify:
+        context = context.with_mvp_planning_result(make_mvp_planning_result())
+    return context
+
+
 class TestPublicJsonContract(unittest.TestCase):
     """Проверяет неизменный публичный JSON-контракт финального результата."""
 
@@ -537,6 +590,73 @@ class TestPublicJsonContract(unittest.TestCase):
         self.assertEqual(payload["assessment"]["risks"], [])
         self.assertEqual(payload["clarifying_questions"], [])
         self.assertEqual(payload["mvp_suggestion"], "")
+
+    def test_public_json_reject_by_traffic_light_red_filters_scope_risk(self) -> None:
+        context = context_with_public_filter_inputs(
+            matched_rule="reject_by_traffic_light_red"
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+        payload = updated.final_response_payload
+        assert payload is not None
+
+        internal_risks = updated.assessment_result.risks
+        self.assertIn("scope_too_large", [risk.type for risk in internal_risks])
+        self.assertEqual(payload["assessment"]["recommendation"], "reject")
+        self.assertNotIn("Слишком широкий объём.", payload["assessment"]["reasons"])
+        self.assertNotIn("Слишком широкий объём.", payload["assessment"]["risks"])
+
+    def test_public_json_simplify_keeps_scope_risk(self) -> None:
+        context = context_with_public_filter_inputs(
+            matched_rule="simplify_scope_too_large",
+            status=DecisionStatus.simplify,
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+        payload = updated.final_response_payload
+        assert payload is not None
+
+        self.assertEqual(payload["assessment"]["recommendation"], "simplify")
+        self.assertIn("Слишком широкий объём.", payload["assessment"]["reasons"])
+        self.assertIn("Слишком широкий объём.", payload["assessment"]["risks"])
+        self.assertNotIn(
+            "Заказчик ожидает промышленной надёжности.",
+            payload["assessment"]["risks"],
+        )
+
+    def test_public_json_reject_by_business_risk_keeps_only_reject_level_risks(
+        self,
+    ) -> None:
+        context = context_with_public_filter_inputs(
+            matched_rule="reject_by_business_risk"
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+        payload = updated.final_response_payload
+        assert payload is not None
+
+        self.assertIn(
+            "Заказчик ожидает промышленной надёжности.",
+            payload["assessment"]["reasons"],
+        )
+        self.assertIn(
+            "Заказчик ожидает промышленной надёжности.",
+            payload["assessment"]["risks"],
+        )
+        self.assertNotIn("Слишком широкий объём.", payload["assessment"]["reasons"])
+        self.assertNotIn("Слишком широкий объём.", payload["assessment"]["risks"])
+
+    def test_customer_response_draft_keeps_response_writer_behavior(self) -> None:
+        context = context_with_public_filter_inputs(
+            matched_rule="reject_by_traffic_light_red"
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+        payload = updated.final_response_payload
+        assert payload is not None
+
+        self.assertIn("Слишком широкий объём.", updated.final_response_text)
+        self.assertIn("Слишком широкий объём.", payload["customer_response_draft"])
 
     def test_builder_uses_empty_customer_response_when_text_is_absent(self) -> None:
         payload = BriefAnalysisResultBuilder().build(make_context()).model_dump(
