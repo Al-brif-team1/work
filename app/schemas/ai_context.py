@@ -15,7 +15,6 @@ from app.schemas.extraction import ExtractionResult, ExtractedBrief
 from app.schemas.knowledge import SearchResult
 from app.schemas.mvp import MVPPlanningResult
 from app.schemas.question import QuestionGenerationResult
-from app.schemas.self_check import SelfCheckResult
 
 
 class PipelineInputState(BaseModel):
@@ -54,7 +53,6 @@ class PipelineResults(BaseModel):
     arbitration_result: ArbitrationResult | None = None
     clarification_result: QuestionGenerationResult | None = None
     mvp_planning_result: MVPPlanningResult | None = None
-    self_check_result: SelfCheckResult | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -159,11 +157,6 @@ class AIContext(BaseModel):
     def final_response_payload(self) -> dict[str, Any] | None:
         """Выполняет шаг «final response payload». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.response.payload
-
-    @property
-    def self_check_result(self) -> SelfCheckResult | None:
-        """Выполняет шаг «self check result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        return self.results.self_check_result
 
     @property
     def retrieved_context(self) -> list[SearchResult]:
@@ -272,10 +265,6 @@ class AIContext(BaseModel):
                 )
             }
         )
-
-    def with_self_check_result(self, result: SelfCheckResult) -> "AIContext":
-        """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""
-        return self._with_results(update={"self_check_result": result})
 
     def with_metadata(self, **metadata: Any) -> "AIContext":
         """Возвращает новую версию структуры данных с добавленным результатом. Так конвейер не теряет предыдущие детали и аккуратно дополняет контекст."""

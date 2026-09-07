@@ -32,12 +32,6 @@ from app.pipeline.result_builder import (
     BriefAnalysisResultBuilder,
     BriefAnalysisResultError,
 )
-from app.pipeline.self_check import (
-    DeterministicValidator,
-    LLMSelfChecker,
-    SelfCheckError,
-    SelfChecker,
-)
 from app.pipeline.completeness import (
     CompletenessCheckStage,
     CompletenessConfigError,
@@ -87,10 +81,6 @@ __all__ = [
     "PROMPT_INJECTION_REASON_CODE",
     "PROMPT_INJECTION_RULE_KEY",
     "SecurityGateStage",
-    "DeterministicValidator",
-    "LLMSelfChecker",
-    "SelfCheckError",
-    "SelfChecker",
     "Extractor",
     "ExtractorError",
 ]
