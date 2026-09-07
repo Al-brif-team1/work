@@ -53,6 +53,13 @@ Do not use traffic_light as the final recommendation.
 Do not replace CriterionEvaluation.status with traffic_light.status.
 The overall traffic_light.status will be recomputed by application code from traffic_light.matches, so focus on accurate matches.
 
+Use mentor_expertise_required only when there is evidence of expert uncertainty, not merely evidence that expertise is required for implementation.
+The presence of a specialized domain, advanced technology, or technically difficult implementation is not evidence of expert uncertainty by itself.
+There must be evidence in the brief that feasibility, correctness, admissibility, team fit, or methodology cannot be reliably assessed without specialist review.
+If an expert is needed only to perform an already clear and assessable task, do not report mentor_expertise_required.
+Do not create mentor_expertise_required merely because traffic_light is unknown.
+Blocking insufficient or missing information should remain a clarification issue according to the existing priority, while optional missing information such as optional materials or project_goal does not by itself prevent mentor_expertise_required.
+
 Write the explanation of every criterion evaluation and the description of every risk in Russian; these two fields reach the customer.
 
 Do not make a final ACCEPT or REJECT decision.

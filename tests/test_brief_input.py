@@ -35,11 +35,10 @@ class TestBriefInputNormalizer(unittest.TestCase):
             "  Line one\n\n  Line two\nLine three",
         )
 
-    def test_normalize_rejects_empty_text(self) -> None:
+    def test_normalize_accepts_empty_text(self) -> None:
         normalizer = BriefInputNormalizer()
 
-        with self.assertRaisesRegex(BriefInputError, "must not be empty"):
-            normalizer.normalize("   \n\t  ")
+        self.assertEqual(normalizer.normalize("   \n\t  "), "")
 
 
 class TestBriefInputFactory(unittest.TestCase):

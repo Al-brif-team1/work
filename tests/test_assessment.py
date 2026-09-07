@@ -569,6 +569,62 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertIn("assessment analyst", runner.calls[0]["system_prompt"])
         self.assertNotIn("Build a support bot", runner.calls[0]["system_prompt"])
 
+    def test_assessment_prompt_defines_mentor_expert_uncertainty_boundary(
+        self,
+    ) -> None:
+        stage = AssessmentStage(
+            llm_runner=FakeLLMRunner(make_assessment_payload()),
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        system_prompt = stage.build_system_prompt(
+            stage._preparation.prepare(make_context())
+        )
+
+        self.assertIsNotNone(system_prompt)
+        assert system_prompt is not None
+        self.assertIn(
+            "evidence of expert uncertainty, not merely evidence that expertise is required for implementation",
+            system_prompt,
+        )
+        self.assertIn(
+            "specialized domain, advanced technology, or technically difficult implementation is not evidence of expert uncertainty by itself",
+            system_prompt,
+        )
+        self.assertIn(
+            "If an expert is needed only to perform an already clear and assessable task, do not report mentor_expertise_required",
+            system_prompt,
+        )
+
+    def test_assessment_prompt_keeps_traffic_light_unknown_separate_from_mentor_risk(
+        self,
+    ) -> None:
+        stage = AssessmentStage(
+            llm_runner=FakeLLMRunner(make_assessment_payload()),
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        system_prompt = stage.build_system_prompt(
+            stage._preparation.prepare(make_context())
+        )
+
+        self.assertIsNotNone(system_prompt)
+        assert system_prompt is not None
+        self.assertIn(
+            "Do not create mentor_expertise_required merely because traffic_light is unknown",
+            system_prompt,
+        )
+        self.assertIn(
+            "Blocking insufficient or missing information should remain a clarification issue",
+            system_prompt,
+        )
+        self.assertIn(
+            "optional materials or project_goal does not by itself prevent mentor_expertise_required",
+            system_prompt,
+        )
+
     def test_traffic_light_prompt_uses_goal_and_expected_result_when_tasks_empty(
         self,
     ) -> None:

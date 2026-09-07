@@ -18,6 +18,7 @@ from app.llm.runner import LLMRunner
 from app.pipeline.arbiter import DeterministicArbiterStage
 from app.pipeline.assessment import AssessmentRetriever, AssessmentStage
 from app.pipeline.completeness import CompletenessCheckStage
+from app.pipeline.empty_brief import EmptyBriefRejectionStage
 from app.pipeline.extractor import Extractor
 from app.pipeline.mvp_planner import MVPPlannerStage
 from app.pipeline.question_generator import TemplateQuestionGeneratorStage
@@ -90,6 +91,7 @@ class BriefAnalysisPipeline:
         )
         return cls(
             stages=[
+                EmptyBriefRejectionStage(tracing_client=tracing),
                 Extractor(
                     llm_runner=llm_runner,
                     tracing_client=tracing,
@@ -160,4 +162,8 @@ class BriefAnalysisPipeline:
         )
         for stage in self._stages:
             context = stage.run_context(context)
+            if context.stage_metadata.get(stage.__class__.__name__, {}).get(
+                "short_circuit_pipeline"
+            ):
+                break
         return context

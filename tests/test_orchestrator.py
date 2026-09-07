@@ -14,6 +14,7 @@ from app.pipeline import (
     BriefAnalysisPipeline,
     CompletenessCheckStage,
     DeterministicArbiterStage,
+    EmptyBriefRejectionStage,
     Extractor,
     LLMSelfChecker,
     MVPPlannerStage,
@@ -317,6 +318,7 @@ class TestBriefAnalysisPipeline(unittest.TestCase):
         pipeline = _build_factory_pipeline(FakeProductionLLMClient([]))
 
         expected_stage_types = (
+            EmptyBriefRejectionStage,
             Extractor,
             CompletenessCheckStage,
             AssessmentStage,

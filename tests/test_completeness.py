@@ -13,16 +13,25 @@ from app.pipeline import (
     CompletenessCheckStage,
     CompletenessConfigError,
     CompletenessError,
+    DeterministicArbiterStage,
 )
 from app.schemas import (
     AIContext,
+    AssessmentRecommendation,
+    AssessmentResult,
+    AssessmentTechnicalInfo,
     CompletenessItem,
     CompletenessLevel,
     CompletenessResult,
     CompletenessStatus,
+    CriterionEvaluation,
+    CriterionEvaluationStatus,
+    DecisionStatus,
     ExtractedBrief,
     ExtractedFact,
     FactStatus,
+    TrafficLightResult,
+    TrafficLightStatus,
 )
 
 
@@ -101,9 +110,9 @@ def write_criteria_yaml(path: Path, project_type_key: str = "web_app") -> None:
                 - key: project_goal
                   field_path: project_goal
                   title: Project goal
-                  description: Required project goal.
-                  required: true
-                  customer_field_role: blocking
+                  description: Optional project goal.
+                  required: false
+                  customer_field_role: optional
                 - key: tasks
                   field_path: tasks
                   title: Tasks
@@ -145,7 +154,7 @@ def write_criteria_yaml(path: Path, project_type_key: str = "web_app") -> None:
                   title: Deadlines
                   description: Optional deadlines.
                   required: false
-                  customer_field_role: optional
+                  customer_field_role: internal
                 - key: integrations
                   field_path: integrations
                   title: Integrations
@@ -162,6 +171,41 @@ def write_criteria_yaml(path: Path, project_type_key: str = "web_app") -> None:
         ).strip()
         + "\n",
         encoding="utf-8",
+    )
+
+
+def ready_assessment() -> AssessmentResult:
+    return AssessmentResult(
+        criterion_evaluations=[
+            CriterionEvaluation(
+                criterion="goal_clarity",
+                criterion_title="Goal clarity",
+                status=CriterionEvaluationStatus.met,
+                evidence=["Goal is clear"],
+                explanation="Goal is clear.",
+                confidence=0.9,
+                notes=None,
+            )
+        ],
+        risks=[],
+        evidence=[],
+        has_risks=False,
+        recommendation=AssessmentRecommendation.ready_for_arbitration,
+        summary="Ready brief.",
+        traffic_light=TrafficLightResult(status=TrafficLightStatus.green),
+        technical_info=AssessmentTechnicalInfo(
+            attempts=1,
+            prompt_name="assessment.md",
+            trace_enabled=False,
+            trace_name="assessment.brief",
+            model_name=None,
+            retriever_used=False,
+            retrieved_context_count=0,
+            criteria_count=1,
+            risk_types_count=0,
+            raw_response=None,
+            recovered_errors=[],
+        ),
     )
 
 
@@ -199,10 +243,10 @@ class TestCompletenessCheckStage(unittest.TestCase):
         self.assertEqual(len(result.optional_missing_information), 0)
         self.assertEqual(len(result.clarification_information), 0)
         self.assertGreaterEqual(len(result.present_information), 5)
-        self.assertEqual(result.technical_info.required_fields_count, 5)
-        self.assertEqual(result.technical_info.optional_fields_count, 4)
+        self.assertEqual(result.technical_info.required_fields_count, 4)
+        self.assertEqual(result.technical_info.optional_fields_count, 5)
 
-    def test_missing_goal_is_reported(self) -> None:
+    def test_missing_goal_is_reported_as_optional_customer_information(self) -> None:
         checker = CompletenessCheckStage(criteria_path=self.criteria_path)
         brief = make_brief(
             project_goal=fact(None, status=FactStatus.missing),
@@ -210,23 +254,27 @@ class TestCompletenessCheckStage(unittest.TestCase):
             project_type=fact("web_app"),
             project_direction=fact("support automation"),
             expected_result=fact("Working support bot"),
+            materials=[fact("Support scripts")],
+            integrations=[fact("CRM")],
         )
 
         result = checker.check(brief)
 
-        self.assertFalse(result.is_complete)
-        self.assertEqual(result.level, CompletenessLevel.incomplete)
-        self.assertEqual(len(result.missing_information), 1)
-        self.assertEqual(len(result.critical_missing_information), 1)
-        self.assertEqual(result.missing_information[0].field_key, "project_goal")
+        self.assertTrue(result.is_complete)
+        self.assertEqual(result.level, CompletenessLevel.complete)
+        self.assertEqual(result.missing_information, [])
+        self.assertEqual(result.critical_missing_information, [])
+        self.assertEqual(len(result.optional_missing_information), 1)
+        self.assertEqual(result.optional_missing_information[0].field_key, "project_goal")
         self.assertEqual(
-            result.critical_missing_information[0].field_key,
-            "project_goal",
-        )
-        self.assertEqual(
-            result.missing_information[0].status,
+            result.optional_missing_information[0].status,
             CompletenessStatus.missing,
         )
+        counts = DeterministicArbiterStage._completeness_counts(result)
+        self.assertEqual(counts["blocking_missing_count"], 0)
+        self.assertEqual(counts["optional_missing_count"], 1)
+        self.assertEqual(counts["blocking_clarification_count"], 0)
+        self.assertEqual(counts["optional_clarification_count"], 0)
 
     def test_missing_tasks_are_reported(self) -> None:
         checker = CompletenessCheckStage(criteria_path=self.criteria_path)
@@ -285,9 +333,285 @@ class TestCompletenessCheckStage(unittest.TestCase):
         self.assertEqual(result.critical_missing_information, [])
         self.assertEqual(
             {item.field_key for item in result.optional_missing_information},
-            {"materials", "deadlines", "integrations"},
+            {"materials", "integrations"},
         )
-        self.assertEqual(result.technical_info.optional_missing_count, 3)
+        self.assertEqual(result.technical_info.optional_missing_count, 2)
+
+    def test_missing_deadlines_do_not_increment_class_driving_counters(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        brief = make_brief(
+            project_goal=fact("Build a support bot"),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("support automation"),
+            expected_result=fact("Working support bot"),
+            materials=[fact("Support scripts")],
+            deadlines=[],
+            integrations=[fact("CRM")],
+        )
+
+        result = checker.check(brief)
+
+        self.assertTrue(result.is_complete)
+        self.assertEqual(result.missing_information, [])
+        self.assertEqual(result.critical_missing_information, [])
+        self.assertEqual(result.optional_missing_information, [])
+        self.assertEqual(result.clarification_information, [])
+        self.assertEqual(result.technical_info.missing_count, 0)
+        self.assertEqual(result.technical_info.critical_missing_count, 0)
+        self.assertEqual(result.technical_info.optional_missing_count, 0)
+        self.assertEqual(result.technical_info.clarification_count, 0)
+        counts = DeterministicArbiterStage._completeness_counts(result)
+        self.assertEqual(counts["blocking_missing_count"], 0)
+        self.assertEqual(counts["optional_missing_count"], 0)
+        self.assertEqual(counts["blocking_clarification_count"], 0)
+        self.assertEqual(counts["optional_clarification_count"], 0)
+
+    def test_uncertain_deadlines_do_not_increment_class_driving_counters(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        brief = make_brief(
+            project_goal=fact("Build a support bot"),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("support automation"),
+            expected_result=fact("Working support bot"),
+            materials=[fact("Support scripts")],
+            deadlines=[fact("Customer will clarify timing", FactStatus.uncertain)],
+            integrations=[fact("CRM")],
+        )
+
+        result = checker.check(brief)
+
+        self.assertTrue(result.is_complete)
+        self.assertEqual(result.missing_information, [])
+        self.assertEqual(result.critical_missing_information, [])
+        self.assertEqual(result.optional_missing_information, [])
+        self.assertEqual(result.clarification_information, [])
+        self.assertEqual(result.technical_info.optional_missing_count, 0)
+        self.assertEqual(result.technical_info.clarification_count, 0)
+        counts = DeterministicArbiterStage._completeness_counts(result)
+        self.assertEqual(counts["blocking_missing_count"], 0)
+        self.assertEqual(counts["optional_missing_count"], 0)
+        self.assertEqual(counts["blocking_clarification_count"], 0)
+        self.assertEqual(counts["optional_clarification_count"], 0)
+
+    def test_deadlines_presence_does_not_change_accept_classification(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        arbiter = DeterministicArbiterStage()
+        base_brief = {
+            "project_goal": fact("Build a support bot"),
+            "tasks": [fact("Implement bot")],
+            "project_type": fact("web_app"),
+            "project_direction": fact("development"),
+            "expected_result": fact("Working support bot"),
+            "materials": [fact("Support scripts")],
+            "integrations": [fact("CRM")],
+        }
+        with_deadlines = make_brief(**base_brief, deadlines=[fact("Q4")])
+        without_deadlines = make_brief(**base_brief, deadlines=[])
+
+        result_with_deadlines = arbiter.arbitrate_assessment(
+            checker.check(with_deadlines),
+            ready_assessment(),
+        )
+        result_without_deadlines = arbiter.arbitrate_assessment(
+            checker.check(without_deadlines),
+            ready_assessment(),
+        )
+
+        self.assertEqual(result_with_deadlines.final_status, DecisionStatus.accept)
+        self.assertEqual(result_without_deadlines.final_status, DecisionStatus.accept)
+        self.assertEqual(
+            result_with_deadlines.triggered_rules[0].rule_key,
+            "accept_ready",
+        )
+        self.assertEqual(
+            result_without_deadlines.triggered_rules[0].rule_key,
+            "accept_ready",
+        )
+
+    def test_missing_other_optional_customer_field_still_changes_classification(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        arbiter = DeterministicArbiterStage()
+        brief = make_brief(
+            project_goal=fact("Build a support bot"),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("development"),
+            expected_result=fact("Working support bot"),
+            materials=[],
+            deadlines=[],
+            integrations=[fact("CRM")],
+        )
+
+        completeness = checker.check(brief)
+        result = arbiter.arbitrate_assessment(completeness, ready_assessment())
+
+        self.assertEqual(
+            {item.field_key for item in completeness.optional_missing_information},
+            {"materials"},
+        )
+        self.assertEqual(result.final_status, DecisionStatus.accept_with_clarifications)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "accept_with_missing_optional_information",
+        )
+
+    def test_case_a_missing_only_project_goal_accepts_with_optional_clarification(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        arbiter = DeterministicArbiterStage()
+        brief = make_brief(
+            project_goal=fact(None, FactStatus.missing),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("development"),
+            expected_result=fact("Working support bot"),
+            materials=[fact("Support scripts")],
+            integrations=[fact("CRM")],
+        )
+
+        completeness = checker.check(brief)
+        result = arbiter.arbitrate_assessment(completeness, ready_assessment())
+        counts = DeterministicArbiterStage._completeness_counts(completeness)
+
+        self.assertEqual(counts["blocking_missing_count"], 0)
+        self.assertEqual(counts["blocking_clarification_count"], 0)
+        self.assertEqual(counts["optional_missing_count"], 1)
+        self.assertEqual(counts["optional_clarification_count"], 0)
+        self.assertEqual(result.final_status, DecisionStatus.accept_with_clarifications)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "accept_with_missing_optional_information",
+        )
+
+    def test_case_b_uncertain_only_project_goal_accepts_with_optional_clarification(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        arbiter = DeterministicArbiterStage()
+        brief = make_brief(
+            project_goal=fact("Goal needs confirmation", FactStatus.uncertain),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("development"),
+            expected_result=fact("Working support bot"),
+            materials=[fact("Support scripts")],
+            integrations=[fact("CRM")],
+        )
+
+        completeness = checker.check(brief)
+        result = arbiter.arbitrate_assessment(completeness, ready_assessment())
+        counts = DeterministicArbiterStage._completeness_counts(completeness)
+
+        self.assertEqual(counts["blocking_missing_count"], 0)
+        self.assertEqual(counts["blocking_clarification_count"], 0)
+        self.assertEqual(counts["optional_missing_count"], 0)
+        self.assertEqual(counts["optional_clarification_count"], 1)
+        self.assertEqual(result.final_status, DecisionStatus.accept_with_clarifications)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "accept_with_optional_uncertainty",
+        )
+
+    def test_case_c_missing_project_goal_and_tasks_clarifies_on_blocking_tasks(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        arbiter = DeterministicArbiterStage()
+        brief = make_brief(
+            project_goal=fact(None, FactStatus.missing),
+            tasks=[],
+            project_type=fact("web_app"),
+            project_direction=fact("development"),
+            expected_result=fact("Working support bot"),
+            materials=[fact("Support scripts")],
+            integrations=[fact("CRM")],
+        )
+
+        completeness = checker.check(brief)
+        result = arbiter.arbitrate_assessment(completeness, ready_assessment())
+        counts = DeterministicArbiterStage._completeness_counts(completeness)
+
+        self.assertEqual(counts["blocking_missing_count"], 1)
+        self.assertEqual(counts["optional_missing_count"], 1)
+        self.assertEqual(result.final_status, DecisionStatus.clarify)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "clarify_blocking_missing_information",
+        )
+        self.assertEqual({item.field_key for item in completeness.missing_information}, {"tasks"})
+
+    def test_case_d_missing_project_goal_and_expected_result_clarifies_on_blocking_result(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        arbiter = DeterministicArbiterStage()
+        brief = make_brief(
+            project_goal=fact(None, FactStatus.missing),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("development"),
+            expected_result=fact(None, FactStatus.missing),
+            materials=[fact("Support scripts")],
+            integrations=[fact("CRM")],
+        )
+
+        completeness = checker.check(brief)
+        result = arbiter.arbitrate_assessment(completeness, ready_assessment())
+        counts = DeterministicArbiterStage._completeness_counts(completeness)
+
+        self.assertEqual(counts["blocking_missing_count"], 1)
+        self.assertEqual(counts["optional_missing_count"], 1)
+        self.assertEqual(result.final_status, DecisionStatus.clarify)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "clarify_blocking_missing_information",
+        )
+        self.assertEqual({item.field_key for item in completeness.missing_information}, {"expected_result"})
+
+    def test_case_e_missing_project_goal_tasks_and_expected_result_does_not_accept(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        arbiter = DeterministicArbiterStage()
+        brief = make_brief(
+            project_goal=fact(None, FactStatus.missing),
+            tasks=[],
+            project_type=fact("web_app"),
+            project_direction=fact("development"),
+            expected_result=fact(None, FactStatus.missing),
+            materials=[fact("Support scripts")],
+            integrations=[fact("CRM")],
+        )
+
+        completeness = checker.check(brief)
+        result = arbiter.arbitrate_assessment(completeness, ready_assessment())
+
+        self.assertNotIn(
+            result.final_status,
+            {DecisionStatus.accept, DecisionStatus.accept_with_clarifications},
+        )
+        self.assertEqual(result.final_status, DecisionStatus.clarify)
+        self.assertEqual(
+            result.triggered_rules[0].rule_key,
+            "clarify_blocking_missing_information",
+        )
+
+    def test_case_f_present_project_goal_keeps_ready_acceptance(self) -> None:
+        checker = CompletenessCheckStage(criteria_path=self.criteria_path)
+        arbiter = DeterministicArbiterStage()
+        brief = make_brief(
+            project_goal=fact("Build a support bot"),
+            tasks=[fact("Implement bot")],
+            project_type=fact("web_app"),
+            project_direction=fact("development"),
+            expected_result=fact("Working support bot"),
+            materials=[fact("Support scripts")],
+            integrations=[fact("CRM")],
+        )
+
+        completeness = checker.check(brief)
+        result = arbiter.arbitrate_assessment(completeness, ready_assessment())
+        counts = DeterministicArbiterStage._completeness_counts(completeness)
+
+        self.assertEqual(counts["blocking_missing_count"], 0)
+        self.assertEqual(counts["optional_missing_count"], 0)
+        self.assertEqual(counts["blocking_clarification_count"], 0)
+        self.assertEqual(counts["optional_clarification_count"], 0)
+        self.assertEqual(result.final_status, DecisionStatus.accept)
+        self.assertEqual(result.triggered_rules[0].rule_key, "accept_ready")
 
     def test_explicit_negative_integrations_are_present_not_optional_missing(self) -> None:
         checker = CompletenessCheckStage(criteria_path=self.criteria_path)
@@ -354,11 +678,11 @@ class TestCompletenessCheckStage(unittest.TestCase):
         self.assertFalse(result.is_complete)
         self.assertEqual(
             {item.field_key for item in result.missing_information},
-            {"project_goal", "tasks", "expected_result"},
+            {"tasks", "expected_result"},
         )
         self.assertEqual(
             {item.field_key for item in result.critical_missing_information},
-            {"project_goal", "tasks", "expected_result"},
+            {"tasks", "expected_result"},
         )
 
     def test_missing_project_direction_is_not_customer_facing_missing(self) -> None:
@@ -459,7 +783,7 @@ class TestCompletenessCheckStage(unittest.TestCase):
 
         self.assertFalse(result.is_complete)
         self.assertEqual(result.level, CompletenessLevel.incomplete)
-        self.assertEqual(result.technical_info.critical_missing_count, 4)
+        self.assertEqual(result.technical_info.critical_missing_count, 3)
 
     def test_stage_uses_base_stage_lifecycle_and_updates_context(self) -> None:
         stage = CompletenessCheckStage(criteria_path=self.criteria_path)
