@@ -199,8 +199,6 @@ def ready_assessment() -> AssessmentResult:
             trace_enabled=False,
             trace_name="assessment.brief",
             model_name=None,
-            retriever_used=False,
-            retrieved_context_count=0,
             criteria_count=1,
             risk_types_count=0,
             raw_response=None,

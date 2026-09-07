@@ -10,8 +10,6 @@ from app.schemas import (
     CompletenessItem,
     CompletenessResult,
     CompletenessStatus,
-    Document,
-    DocumentMetadata,
     ExtractedBrief,
     ExtractedFact,
     ExtractionResult,
@@ -21,8 +19,6 @@ from app.schemas import (
     PipelineResults,
     PipelineTechnicalState,
     ResponseState,
-    RetrievalState,
-    SearchResult,
 )
 
 
@@ -107,19 +103,6 @@ def make_completeness_result() -> CompletenessResult:
     )
 
 
-def make_search_result(document_id: str) -> SearchResult:
-    """Выполняет шаг «make search result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-    return SearchResult(
-        document=Document(
-            id=document_id,
-            text=f"Knowledge for {document_id}",
-            metadata=DocumentMetadata(source=f"{document_id}.md"),
-        ),
-        score=0.9,
-        rank=1,
-    )
-
-
 class TestAIContext(unittest.TestCase):
     """Класс «TestAIContext» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
@@ -136,7 +119,6 @@ class TestAIContext(unittest.TestCase):
         self.assertEqual(context.metadata["request_id"], "req-1")
         self.assertIsInstance(context.inputs, PipelineInputState)
         self.assertIsInstance(context.results, PipelineResults)
-        self.assertIsInstance(context.retrieval, RetrievalState)
         self.assertIsInstance(context.response, ResponseState)
         self.assertIsInstance(context.technical, PipelineTechnicalState)
         self.assertIsNone(context.extracted_brief)
@@ -155,20 +137,6 @@ class TestAIContext(unittest.TestCase):
         self.assertIs(extracted_context.extraction_result, extraction_result)
         self.assertIs(extracted_context.extracted_brief, extraction_result.extracted_brief)
         self.assertIs(completed_context.completeness_result, completeness_result)
-
-    def test_retrieved_context_can_be_replaced_or_appended(self) -> None:
-        context = AIContext.from_brief(BriefInputFactory().from_text("Build a portal"))
-        first = make_search_result("doc-1")
-        second = make_search_result("doc-2")
-
-        replaced = context.with_retrieved_context([first])
-        appended = replaced.append_retrieved_context([second])
-
-        self.assertEqual([item.document.id for item in replaced.retrieved_context], ["doc-1"])
-        self.assertEqual(
-            [item.document.id for item in appended.retrieved_context],
-            ["doc-1", "doc-2"],
-        )
 
     def test_metadata_is_merged_by_copy(self) -> None:
         context = AIContext.from_brief(

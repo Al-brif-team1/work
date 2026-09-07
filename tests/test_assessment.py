@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import unittest
-from collections.abc import Mapping
 from typing import Any
 
 from pydantic import ValidationError
@@ -34,42 +33,16 @@ from app.schemas import (
     CompletenessStatus,
     CriterionEvaluation,
     CriterionEvaluationStatus,
-    Document,
-    DocumentMetadata,
     ExtractedBrief,
     ExtractedFact,
     FactStatus,
     Risk,
     RiskSeverity,
-    SearchResult,
     TrafficLightMatch,
     TrafficLightResult,
     TrafficLightStatus,
 )
 from app.tracing.tracing import NoOpTracingClient
-
-
-class FakeRetriever:
-    """Класс «FakeRetriever» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
-
-    def __init__(self, results: list[SearchResult]) -> None:
-        self.results = results
-        self.calls: list[dict[str, Any]] = []
-
-    def retrieve(
-        self,
-        query: str,
-        top_k: int | None = None,
-        metadata_filters: Mapping[str, object] | None = None,
-    ) -> list[SearchResult]:
-        self.calls.append(
-            {
-                "query": query,
-                "top_k": top_k,
-                "metadata_filters": dict(metadata_filters or {}),
-            }
-        )
-        return list(self.results)
 
 
 class FakeLLMRunner:
@@ -205,19 +178,6 @@ def make_context_without_tasks() -> AIContext:
         AIContext.from_brief(brief_input)
         .with_extracted_brief(extracted)
         .with_completeness_result(make_completeness_result())
-    )
-
-
-def make_search_result() -> SearchResult:
-    """Выполняет шаг «make search result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-    return SearchResult(
-        document=Document(
-            id="kb-1",
-            text="Support channel integration guidance.",
-            metadata=DocumentMetadata(source="kb.md", category="assessment"),
-        ),
-        score=0.92,
-        rank=1,
     )
 
 
@@ -425,42 +385,13 @@ class TestAssessmentModels(unittest.TestCase):
 class TestAssessmentPreparation(unittest.TestCase):
     """Класс «TestAssessmentPreparation» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
-    def test_prepare_uses_retriever_and_criteria_configuration(self) -> None:
-        retriever = FakeRetriever([make_search_result()])
-        preparation = AssessmentPreparation(
-            retriever=retriever,
-            criteria_config=load_test_criteria_config(),
-        )
+    def test_prepare_uses_criteria_configuration(self) -> None:
+        preparation = AssessmentPreparation(criteria_config=load_test_criteria_config())
 
-        prepared = preparation.prepare(
-            make_context(),
-            top_k=3,
-            metadata_filters={"category": "assessment"},
-        )
+        prepared = preparation.prepare(make_context())
 
         self.assertEqual(prepared.criteria_count, 7)
         self.assertEqual(prepared.risk_types_count, 6)
-        self.assertEqual(prepared.retrieved_context[0].document.id, "kb-1")
-        self.assertEqual(prepared.context.retrieved_context[0].document.id, "kb-1")
-        self.assertIn("Build a support bot", retriever.calls[0]["query"])
-        self.assertIn("integrations", retriever.calls[0]["query"])
-        self.assertEqual(retriever.calls[0]["top_k"], 3)
-        self.assertEqual(
-            retriever.calls[0]["metadata_filters"],
-            {"category": "assessment"},
-        )
-
-    def test_prepare_reuses_existing_context_when_no_retriever_is_configured(
-        self,
-    ) -> None:
-        existing_result = make_search_result()
-        context = make_context().with_retrieved_context([existing_result])
-        preparation = AssessmentPreparation(criteria_config=load_test_criteria_config())
-
-        prepared = preparation.prepare(context)
-
-        self.assertEqual(prepared.retrieved_context, [existing_result])
-        self.assertEqual(prepared.context.retrieved_context, [existing_result])
 
     def test_prepare_requires_extraction_and_completeness_outputs(self) -> None:
         context = AIContext.from_brief(BriefInputFactory().from_text("Build a bot"))
@@ -535,20 +466,14 @@ class TestAssessmentStage(unittest.TestCase):
 
     def test_successful_assessment_uses_prompt_manager_and_llm_runner(self) -> None:
         runner = FakeLLMRunner(make_assessment_payload())
-        retriever = FakeRetriever([make_search_result()])
         stage = AssessmentStage(
             llm_runner=runner,
             tracing_client=NoOpTracingClient(),
-            retriever=retriever,
             criteria_config=load_test_criteria_config(),
         )
 
         result = stage.run(
-            stage._preparation.prepare(
-                make_context(),
-                top_k=2,
-                metadata_filters={"category": "assessment"},
-            )
+            stage._preparation.prepare(make_context())
         )
 
         self.assertEqual(result.risks[0].type, "placeholder_risk")
@@ -557,8 +482,6 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertEqual(result.summary, "Assessment identified one risk.")
         self.assertEqual(result.technical_info.criteria_count, 7)
         self.assertEqual(result.technical_info.risk_types_count, 6)
-        self.assertEqual(result.technical_info.retrieved_context_count, 1)
-        self.assertTrue(result.technical_info.retriever_used)
         self.assertEqual(runner.calls[0]["output_model"], AssessmentPayload)
         self.assertEqual(runner.calls[0]["trace_name"], "assessment.brief")
         self.assertEqual(runner.calls[0]["span_name"], "assessment.llm")
@@ -1003,12 +926,10 @@ class TestRestrictedTopics(unittest.TestCase):
 
         self.assertIsNone(hit)
 
-    def test_restricted_topic_short_circuits_llm_and_retriever(self) -> None:
+    def test_restricted_topic_short_circuits_llm(self) -> None:
         runner = FakeLLMRunner(AssertionError("LLM must not be called"))
-        retriever = FakeRetriever([make_search_result()])
         stage = AssessmentStage(
             llm_runner=runner,
-            retriever=retriever,
             tracing_client=NoOpTracingClient(),
             criteria_config=load_test_criteria_config(),
         )
@@ -1018,7 +939,6 @@ class TestRestrictedTopics(unittest.TestCase):
         )
 
         self.assertEqual(runner.calls, [])
-        self.assertEqual(retriever.calls, [])
         self.assertIsNotNone(updated.assessment_result)
 
     def test_short_circuit_result_carries_the_ground_for_the_manager(self) -> None:

@@ -416,8 +416,6 @@ def make_assessment_result(
             trace_enabled=False,
             trace_name="assessment.brief",
             model_name=None,
-            retriever_used=False,
-            retrieved_context_count=0,
             criteria_count=len(criterion_evaluations),
             risk_types_count=0,
             raw_response=None,

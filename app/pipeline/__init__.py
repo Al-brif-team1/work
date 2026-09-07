@@ -5,7 +5,6 @@ from app.pipeline.assessment import (
     AssessmentError,
     AssessmentPreparation,
     AssessmentPreparedInput,
-    AssessmentRetriever,
     AssessmentStage,
 )
 from app.pipeline.base import BaseLLMStage, LLMStageRunResult
@@ -50,7 +49,6 @@ __all__ = [
     "AssessmentError",
     "AssessmentPreparation",
     "AssessmentPreparedInput",
-    "AssessmentRetriever",
     "AssessmentStage",
     "BaseLLMStage",
     "BaseStage",
