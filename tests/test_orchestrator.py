@@ -156,7 +156,9 @@ def _minimal_extraction_payload() -> dict[str, Any]:
         "project_goal": {
             "status": "explicit",
             "value": "Сделать небольшой портал для приёма обращений клиентов.",
-            "evidence": ["Нужен портал для приёма обращений."],
+            "evidence": [
+                "Нужен небольшой веб-портал для приёма обращений клиентов."
+            ],
             "confidence": 0.95,
         },
         "tasks": [
@@ -258,6 +260,7 @@ def _ready_assessment_payload() -> dict[str, Any]:
                     task="Небольшой веб-портал для приёма обращений клиентов.",
                     matched_rule="многостраничные сайты, лендинги",
                     status=TrafficLightStatus.green,
+                    source_quote="Небольшой веб-портал для приёма обращений клиентов.",
                     reason="Портал соответствует green-правилу веб/фронтенд-разработки.",
                 )
             ],

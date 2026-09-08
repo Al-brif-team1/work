@@ -492,6 +492,7 @@ def context_with_public_filter_inputs(
                             task="Большой информационный сайт",
                             matched_rule="Слишком сложный сайт",
                             status=TrafficLightStatus.red,
+                            source_quote="Большой информационный сайт",
                             reason="Задача не входит в формат студенческого проекта.",
                         )
                     ],
@@ -770,6 +771,7 @@ class TestResponseWriterStage(unittest.TestCase):
                                 task="Build dashboard with advanced filters",
                                 matched_rule="Advanced dashboard",
                                 status=TrafficLightStatus.yellow,
+                                source_quote="Build dashboard with advanced filters",
                                 reason=(
                                     "Students can do it if the first version "
                                     "has a bounded scope"

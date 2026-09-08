@@ -24,6 +24,7 @@ class TestTrafficLightSchema(unittest.TestCase):
                     task=" создание телеграм-бота ",
                     matched_rule=" создание телеграм-бота ",
                     status="green",
+                    source_quote=" создание телеграм-бота ",
                     reason=" задача входит в навыки студентов ",
                 )
             ],
@@ -34,6 +35,7 @@ class TestTrafficLightSchema(unittest.TestCase):
         self.assertEqual(result.specialization, "Питон/питон+")
         self.assertEqual(result.matches[0].task, "создание телеграм-бота")
         self.assertEqual(result.matches[0].matched_rule, "создание телеграм-бота")
+        self.assertEqual(result.matches[0].source_quote, "создание телеграм-бота")
         self.assertEqual(result.matches[0].status, TrafficLightStatus.green)
         self.assertEqual(result.reason, "задача входит в навыки студентов")
 
@@ -53,12 +55,14 @@ class TestTrafficLightSchema(unittest.TestCase):
                     "task": "сайт заметок с авторизацией",
                     "matched_rule": "сайт заметок с авторизацией",
                     "status": "green",
+                    "source_quote": "сайт заметок с авторизацией",
                     "reason": "задача входит в навыки студентов",
                 },
                 {
                     "task": "комплексная AI/ML интеграция",
                     "matched_rule": "комплексные AI/ML интеграции",
                     "status": "red",
+                    "source_quote": "комплексная AI/ML интеграция",
                     "reason": "задача не входит в навыки студентов",
                 },
             ],
@@ -78,6 +82,7 @@ class TestTrafficLightSchema(unittest.TestCase):
                 task="task",
                 matched_rule="rule",
                 status="green",
+                source_quote="task",
                 reason="reason",
                 extra_field="not allowed",
             )

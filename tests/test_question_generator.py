@@ -80,6 +80,7 @@ def make_yellow_match(
         task=task,
         matched_rule=matched_rule,
         status=TrafficLightStatus.yellow,
+        source_quote=task,
         reason=reason,
     )
 
@@ -339,6 +340,7 @@ class TestTemplateQuestionGeneratorStage(unittest.TestCase):
                                 task="Build dashboard",
                                 matched_rule="Dashboard rule",
                                 status=status,
+                                source_quote="Build dashboard",
                                 reason="Traffic Light reason",
                             )
                         ]
