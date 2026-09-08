@@ -458,7 +458,7 @@ class AssessmentStage(
         self,
     ) -> dict[str, tuple[str, str, TrafficLightStatus] | None]:
         """Build exact normalized rule lookup from traffic-light configuration."""
-        rules: dict[str, tuple[str, str, TrafficLightStatus] | None] = {}
+        rule_locations: dict[str, list[tuple[str, str, TrafficLightStatus]]] = {}
         config = self._preparation.traffic_light_config.traffic_light
         for direction in config.directions:
             for specialization in direction.specializations:
@@ -471,10 +471,13 @@ class AssessmentStage(
                             specialization.key,
                             status,
                         )
-                        if normalized_rule in rules:
-                            rules[normalized_rule] = None
-                            continue
-                        rules[normalized_rule] = rule_location
+                        rule_locations.setdefault(normalized_rule, []).append(
+                            rule_location
+                        )
+        rules: dict[str, tuple[str, str, TrafficLightStatus] | None] = {}
+        for normalized_rule, locations in rule_locations.items():
+            statuses = {status for _, _, status in locations}
+            rules[normalized_rule] = locations[0] if len(statuses) == 1 else None
         return rules
 
     @staticmethod
