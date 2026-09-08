@@ -20,6 +20,7 @@ from app.pipeline import (
     AssessmentError,
     AssessmentPreparation,
     AssessmentStage,
+    DeterministicArbiterStage,
 )
 from app.pipeline.assessment import RestrictedTopicMatcher
 from app.schemas import (
@@ -33,6 +34,7 @@ from app.schemas import (
     CompletenessStatus,
     CriterionEvaluation,
     CriterionEvaluationStatus,
+    DecisionStatus,
     ExtractedBrief,
     ExtractedFact,
     FactStatus,
@@ -676,13 +678,86 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertIsNone(result.traffic_light.direction)
         self.assertIsNone(result.traffic_light.specialization)
 
-    def test_traffic_light_duplicate_rule_text_becomes_unknown(self) -> None:
+    def test_traffic_light_duplicate_red_rule_text_stays_red(self) -> None:
+        duplicate_red_rules = [
+            "VPN",
+            "с нуля не сможет разработать приложение",
+            "фоторедакторы",
+        ]
+
+        for rule in duplicate_red_rules:
+            with self.subTest(rule=rule):
+                result = self._run_assessment_with_traffic_light_matches(
+                    [
+                        make_traffic_light_match(
+                            TrafficLightStatus.green,
+                            "red duplicate task",
+                            rule,
+                        )
+                    ]
+                )
+
+                self.assertEqual(
+                    result.traffic_light.matches[0].status,
+                    TrafficLightStatus.red,
+                )
+                self.assertEqual(
+                    result.traffic_light.status,
+                    TrafficLightStatus.red,
+                )
+
+    def test_traffic_light_duplicate_green_rule_text_stays_green(self) -> None:
+        duplicate_green_rules = [
+            "калькулятор валют",
+            "Предобработка данных",
+            "Моделирование бизнес-процессов",
+        ]
+
+        for rule in duplicate_green_rules:
+            with self.subTest(rule=rule):
+                result = self._run_assessment_with_traffic_light_matches(
+                    [
+                        make_traffic_light_match(
+                            TrafficLightStatus.red,
+                            "green duplicate task",
+                            rule,
+                        )
+                    ]
+                )
+
+                self.assertEqual(
+                    result.traffic_light.matches[0].status,
+                    TrafficLightStatus.green,
+                )
+                self.assertEqual(
+                    result.traffic_light.status,
+                    TrafficLightStatus.green,
+                )
+
+    def test_traffic_light_duplicate_yellow_rule_text_stays_yellow(self) -> None:
         result = self._run_assessment_with_traffic_light_matches(
             [
                 make_traffic_light_match(
                     TrafficLightStatus.red,
-                    "private network",
-                    "VPN",
+                    "yellow duplicate task",
+                    "в таблице указаны лишь примеры проектов, на оценку можно приносить любой проект, необязательно из перечисленных примеров",
+                )
+            ]
+        )
+
+        self.assertEqual(
+            result.traffic_light.matches[0].status,
+            TrafficLightStatus.yellow,
+        )
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.yellow)
+
+    def test_traffic_light_conflicting_duplicate_rule_text_becomes_unknown(self) -> None:
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.red,
+                    "automated ml pipelines",
+                    "выстраивания автоматизированных ML-пайплайнов",
                 )
             ]
         )
@@ -691,6 +766,32 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertEqual(result.traffic_light.status, TrafficLightStatus.unknown)
         self.assertIsNone(result.traffic_light.direction)
         self.assertIsNone(result.traffic_light.specialization)
+
+    def test_traffic_light_normalized_duplicate_red_reaches_arbiter_as_reject(
+        self,
+    ) -> None:
+        assessment_result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.green,
+                    "private network",
+                    "VPN",
+                )
+            ]
+        )
+        arbiter = DeterministicArbiterStage(criteria_config=load_test_criteria_config())
+
+        arbitration = arbiter.arbitrate_assessment(
+            make_completeness_result(),
+            assessment_result,
+        )
+
+        self.assertEqual(assessment_result.traffic_light.status, TrafficLightStatus.red)
+        self.assertEqual(arbitration.final_status, DecisionStatus.reject)
+        self.assertEqual(
+            arbitration.triggered_rules[0].rule_key,
+            "reject_by_traffic_light_red",
+        )
 
     def test_traffic_light_overall_status_uses_normalized_match_colors(self) -> None:
         result = self._run_assessment_with_traffic_light_matches(
