@@ -261,6 +261,7 @@ class AssessmentStage(
             self._preparation.criteria_config
         )
         self._last_run_metadata: dict[str, Any] = {}
+        self._last_context: AIContext | None = None
 
     def assess(
         self,
@@ -310,6 +311,7 @@ class AssessmentStage(
 
     def build_trace_input(self, stage_input: AssessmentPreparedInput) -> dict[str, Any]:
         """Выполняет шаг «build trace input». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        self._last_context = stage_input.context
         metadata = {
             "prompt_name": self.prompt_name,
             "prompt_version": self.prompt_version,
@@ -326,7 +328,9 @@ class AssessmentStage(
         result: LLMRunResult[AssessmentPayload],
     ) -> AssessmentResult:
         """Выполняет шаг «postprocess». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        payload = self._normalize_payload(result.payload)
+        if self._last_context is None:
+            raise AssessmentError("Assessment context is missing during postprocess")
+        payload = self._normalize_payload(result.payload, self._last_context)
         traffic_light = payload.traffic_light.model_copy(
             update={
                 "status": self._compute_traffic_light_status(
@@ -398,7 +402,9 @@ class AssessmentStage(
             }
         )
 
-    def _normalize_payload(self, payload: AssessmentPayload) -> AssessmentPayload:
+    def _normalize_payload(
+        self, payload: AssessmentPayload, context: AIContext
+    ) -> AssessmentPayload:
         """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return payload.model_copy(
             update={
@@ -414,7 +420,7 @@ class AssessmentStage(
                 ],
                 "summary": self._strip_optional_text(payload.summary),
                 "traffic_light": self._normalize_traffic_light(
-                    payload.traffic_light
+                    payload.traffic_light, context
                 ),
             }
         )
@@ -422,6 +428,7 @@ class AssessmentStage(
     def _normalize_traffic_light(
         self,
         traffic_light: TrafficLightResult,
+        context: AIContext,
     ) -> TrafficLightResult:
         """Normalize traffic-light matches against the configured rule source."""
         rule_index = self._build_traffic_light_rule_index()
@@ -431,7 +438,9 @@ class AssessmentStage(
 
         for match in traffic_light.matches:
             rule = rule_index.get(self._normalize_traffic_light_rule(match.matched_rule))
-            if rule is None:
+            if rule is None or not self._is_valid_traffic_light_source_quote(
+                match, context
+            ):
                 matches.append(
                     match.model_copy(update={"status": TrafficLightStatus.unknown})
                 )
@@ -453,6 +462,46 @@ class AssessmentStage(
         if len(rule_specializations) == 1:
             updates["specialization"] = next(iter(rule_specializations))
         return normalized.model_copy(update=updates)
+
+    def _is_valid_traffic_light_source_quote(
+        self,
+        match: TrafficLightMatch,
+        context: AIContext,
+    ) -> bool:
+        """Check that the match is anchored in explicit performer work."""
+        source_quote = self._normalize_traffic_light_rule(match.source_quote)
+        if not source_quote:
+            return False
+
+        normalized_brief = self._normalize_traffic_light_rule(context.normalized_text)
+        if source_quote not in normalized_brief:
+            return False
+
+        extracted = context.extracted_brief
+        if extracted is None:
+            return False
+
+        anchors: list[str] = []
+        work_facts = [
+            extracted.project_goal,
+            *extracted.tasks,
+            extracted.expected_result,
+        ]
+        for fact in work_facts:
+            if fact.status.value != "explicit":
+                continue
+            anchors.extend(fact.evidence)
+            if fact.value:
+                anchors.append(fact.value)
+
+        for anchor in anchors:
+            normalized_anchor = self._normalize_traffic_light_rule(anchor)
+            if not normalized_anchor:
+                continue
+            if source_quote in normalized_anchor or normalized_anchor in source_quote:
+                return True
+
+        return False
 
     def _build_traffic_light_rule_index(
         self,

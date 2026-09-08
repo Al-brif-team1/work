@@ -22,11 +22,12 @@ class TrafficLightMatch(BaseModel):
     task: str
     matched_rule: str
     status: TrafficLightStatus
+    source_quote: str
     reason: str
 
     model_config = ConfigDict(extra="forbid")
 
-    @field_validator("task", "matched_rule", "reason")
+    @field_validator("task", "matched_rule", "source_quote", "reason")
     @classmethod
     def _strip_required_text(cls, value: str) -> str:
         value = value.strip()
