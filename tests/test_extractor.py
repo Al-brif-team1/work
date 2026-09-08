@@ -281,6 +281,93 @@ class TestExtractor(unittest.TestCase):
             "Future-provided materials are not missing information",
             system_prompt,
         )
+        self.assertIn("Задачи проекта", system_prompt)
+        self.assertIn("Semicolon-separated deliverables", system_prompt)
+        self.assertIn("texts, photos, brand style", system_prompt)
+        self.assertIn("Do not put negative statements into constraints", system_prompt)
+        self.assertIn("production-grade SLA не требуется", system_prompt)
+
+    def test_extractor_preserves_explicit_task_list_and_future_materials(
+        self,
+    ) -> None:
+        payload_data = make_valid_extraction()
+        expected_tasks = [
+            "разработать главную страницу",
+            "каталог мероприятий",
+            "страницы мероприятий",
+            "каталог спикеров",
+            "FAQ",
+            "поиск",
+            "фильтрацию",
+        ]
+        expected_materials = ["тексты", "фотографии", "фирменный стиль"]
+        payload_data.update(
+            {
+                "project_goal": {
+                    "status": "explicit",
+                    "value": "разработать большой информационный сайт",
+                    "evidence": ["Нужно разработать большой информационный сайт."],
+                    "confidence": 0.95,
+                    "notes": None,
+                },
+                "tasks": [
+                    {
+                        "status": "explicit",
+                        "value": task,
+                        "evidence": ["Задачи проекта: " + "; ".join(expected_tasks)],
+                        "confidence": 0.9,
+                        "notes": None,
+                    }
+                    for task in expected_tasks
+                ],
+                "materials": [
+                    {
+                        "status": "explicit",
+                        "value": material,
+                        "evidence": [
+                            "Заказчик предоставит тексты, фотографии и фирменный стиль."
+                        ],
+                        "confidence": 0.9,
+                        "notes": None,
+                    }
+                    for material in expected_materials
+                ],
+                "constraints": [],
+                "integrations": [
+                    {
+                        "status": "explicit",
+                        "value": "Внешние API и интеграции не требуются",
+                        "evidence": ["Внешние API и интеграции не требуются."],
+                        "confidence": 0.9,
+                        "notes": None,
+                    }
+                ],
+            }
+        )
+        brief_input = BriefInputFactory().from_text(
+            "Нужно разработать большой информационный сайт. "
+            "Задачи проекта: разработать главную страницу; каталог мероприятий; "
+            "страницы мероприятий; каталог спикеров; FAQ; поиск; фильтрацию. "
+            "Заказчик предоставит тексты, фотографии и фирменный стиль. "
+            "Внешние API и интеграции не требуются. "
+            "Личные кабинеты и платежи не требуются."
+        )
+        extractor = Extractor(
+            llm_runner=FakeLLMRunner(ExtractedBrief.model_validate(payload_data)),
+            tracing_client=NoOpTracingClient(),
+        )
+
+        result = extractor.extract(brief_input)
+
+        self.assertEqual(
+            [task.value for task in result.extracted_brief.tasks],
+            expected_tasks,
+        )
+        self.assertEqual(
+            [material.value for material in result.extracted_brief.materials],
+            expected_materials,
+        )
+        self.assertEqual(result.extracted_brief.constraints, [])
 
     def test_extractor_uses_prompt_manager_render_without_manual_replace(self) -> None:
         source = inspect.getsource(Extractor)

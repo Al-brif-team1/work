@@ -253,6 +253,12 @@ def public_available_materials(context: AIContext) -> list[str]:
     return updated.final_response_payload["extracted_fields"]["available_materials"]
 
 
+def public_extracted_fields(context: AIContext) -> dict:
+    """Возвращает extracted_fields из public JSON payload."""
+    updated = ResponseWriterStage().run_context(context)
+    return updated.final_response_payload["extracted_fields"]
+
+
 def context_with_assessment_summary(
     *,
     status: DecisionStatus,
@@ -1169,6 +1175,71 @@ class TestResponseWriterStage(unittest.TestCase):
             updated.final_response_payload["extracted_fields"]["direction"],
             "unknown",
         )
+
+    def test_public_mapping_preserves_explicit_tasks_and_materials_without_negative_complexity(
+        self,
+    ) -> None:
+        context = make_context()
+        assert context.extracted_brief is not None
+        extracted = context.extracted_brief.model_copy(
+            update={
+                "project_goal": ExtractedFact(
+                    status=FactStatus.explicit,
+                    value="разработать большой информационный сайт",
+                ),
+                "tasks": [
+                    ExtractedFact(status=FactStatus.explicit, value=value)
+                    for value in [
+                        "разработать главную страницу",
+                        "каталог мероприятий",
+                        "страницы мероприятий",
+                        "каталог спикеров",
+                        "FAQ",
+                        "поиск",
+                        "фильтрацию",
+                    ]
+                ],
+                "materials": [
+                    ExtractedFact(status=FactStatus.explicit, value=value)
+                    for value in ["тексты", "фотографии", "фирменный стиль"]
+                ],
+                "constraints": [],
+                "integrations": [
+                    ExtractedFact(
+                        status=FactStatus.explicit,
+                        value="Внешние API и интеграции не требуются",
+                    )
+                ],
+                "other_facts": [
+                    ExtractedFact(
+                        status=FactStatus.explicit,
+                        value="Личные кабинеты и платежи не требуются",
+                    )
+                ],
+            }
+        )
+
+        fields = public_extracted_fields(context.with_extracted_brief(extracted))
+
+        self.assertTrue(fields["tasks"])
+        for expected_task in [
+            "разработать главную страницу",
+            "каталог мероприятий",
+            "страницы мероприятий",
+            "каталог спикеров",
+            "FAQ",
+            "поиск",
+            "фильтрацию",
+        ]:
+            self.assertIn(expected_task, fields["tasks"])
+        self.assertTrue(fields["available_materials"])
+        for expected_material in ["тексты", "фотографии", "фирменный стиль"]:
+            self.assertIn(expected_material, fields["available_materials"])
+        complexity_text = "\n".join(fields["complexity_factors"])
+        self.assertNotIn("API", complexity_text)
+        self.assertNotIn("интеграции не требуются", complexity_text)
+        self.assertNotIn("Личные кабинеты", complexity_text)
+        self.assertNotIn("платежи не требуются", complexity_text)
 
     def test_missing_public_string_fields_are_empty_strings(self) -> None:
         context = make_context()
