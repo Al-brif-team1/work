@@ -3,3 +3,6 @@ openai
 PyYAML
 python-dotenv
 pydantic-settings
+fastapi
+uvicorn
+httpx
