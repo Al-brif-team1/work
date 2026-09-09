@@ -117,38 +117,6 @@ function setFactsStory(step, localProgress) {
   });
 }
 
-if (analyzeButton && analysisState && mockResult && briefTextarea) {
-  analyzeButton.addEventListener("click", async () => {
-    analyzeButton.disabled = true;
-    analysisState.textContent = "Анализируем бриф…";
-    mockResult.classList.add("hidden");
-
-    try {
-      const response = await window.fetch("/api/analyze", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ brief: briefTextarea.value })
-      });
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok || payload?.ok === false) {
-        throw new Error("Analyze request failed");
-      }
-
-      renderAnalysisResult(payload);
-      analysisState.textContent = "Анализ готов.";
-      mockResult.classList.remove("hidden");
-    } catch (error) {
-      analysisState.textContent =
-        "Не удалось выполнить анализ. Попробуйте повторить запрос позже.";
-    } finally {
-      analyzeButton.disabled = false;
-    }
-  });
-}
-
 function setDecisionStory(step, localProgress) {
   const title = decisionStory.querySelector("[data-decision-title]");
   const text = decisionStory.querySelector("[data-decision-text]");
@@ -267,20 +235,6 @@ function renderAnalysisResult(payload) {
   customerParagraph.textContent = responseText;
 
   mockResult.append(status, summaryParagraph, metrics, customerParagraph);
-}
-
-if (false && analyzeButton && analysisState && mockResult) {
-  analyzeButton.addEventListener("click", () => {
-    analyzeButton.disabled = true;
-    analysisState.textContent = "Анализируем бриф…";
-    mockResult.classList.add("hidden");
-
-    window.setTimeout(() => {
-      analysisState.textContent = "Mock UX готов. Backend не вызывался.";
-      mockResult.classList.remove("hidden");
-      analyzeButton.disabled = false;
-    }, 850);
-  });
 }
 
 if (analyzeButton && analysisState && mockResult && briefTextarea) {
