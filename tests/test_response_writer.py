@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+import tempfile
 import unittest
+from pathlib import Path
 
 from pydantic import ValidationError
 
@@ -1589,6 +1591,50 @@ class TestResponseWriterReasons(unittest.TestCase):
                     find_latin_words(updated.final_response_text),
                     [],
                 )
+
+
+class TestRejectLettersConfig(unittest.TestCase):
+    """Формулировки отказных писем лежат в config/reject_letters.yaml, а не в коде."""
+
+    def test_letter_text_comes_from_the_config_file(self) -> None:
+        # Ради этого перенос и делался: письмо меняется правкой файла, без правки кода.
+        context = reject_context_with_risks(
+            Risk(
+                type="restricted_topic",
+                description="Мастерская не берёт проекты про криптовалюты.",
+                severity=RiskSeverity.critical,
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "reject_letters.yaml"
+            path.write_text(
+                "reject_letters:\n"
+                "  grounds:\n"
+                "    - key: restricted_topic\n"
+                "      letter: |-\n"
+                "        Совсем другое письмо.\n"
+                "  default_closing: |-\n"
+                "    Совсем другая концовка.\n",
+                encoding="utf-8",
+            )
+
+            updated = ResponseWriterStage(reject_letters_path=path).run_context(context)
+
+        self.assertEqual(updated.final_response_text, "Совсем другое письмо.")
+
+    def test_config_grounds_are_known_to_the_stage(self) -> None:
+        # Загрузчик ключи не проверяет: опечатка в основании не упадет, а молча вернет
+        # заказчику общее письмо об отказе. Поэтому сверяем ключи здесь.
+        letters = ResponseWriterStage._load_reject_letters(
+            ResponseWriterStage._default_reject_letters_path()
+        )
+        configured = set(letters.letters) | set(letters.closing_prefixes)
+
+        self.assertEqual(
+            configured - set(ResponseWriterStage._REJECT_GROUND_PRIORITY),
+            set(),
+        )
 
 
 if __name__ == "__main__":

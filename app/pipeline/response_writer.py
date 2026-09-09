@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
+from typing import Any, NamedTuple
+
+import yaml
 
 from app.pipeline.contracts import BaseStage
 from app.pipeline.result_builder import (
@@ -21,6 +24,14 @@ from app.tracing.tracing import NoOpTracingClient, TracingClient
 
 class ResponseWriterError(RuntimeError):
     """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
+
+
+class _RejectLetters(NamedTuple):
+    """Разобранный config/reject_letters.yaml. Основание отказа либо заменяет письмо целиком (letters), либо только добавляет свою причину к концовке (closing_prefixes)."""
+
+    letters: dict[str, str]
+    closing_prefixes: dict[str, str]
+    default_closing: str
 
 
 class ResponseWriterStage(BaseStage[AIContext, AIContext]):
@@ -47,39 +58,14 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         "out_of_scope_request",
         "production_criticality",
     )
-    # Здесь объяснять нечего: заявка отклонена не из-за качества брифа. Поэтому письмо
-    # состоит из одной фразы - без блока оснований, который читается как чек-лист
-    # «чего не хватило», и без приглашения переписать бриф.
-    _REJECT_GROUND_LETTERS = {
-        "restricted_topic": (
-            "Здравствуйте!\n\n"
-            "Спасибо за бриф. Проект относится к направлению, с которым "
-            "Мастерская Яндекс Практикума не работает."
-        ),
-        "out_of_scope_request": (
-            "Здравствуйте!\n\n"
-            "Спасибо за бриф. Запрос относится к формату, которого нет среди "
-            "поддерживаемых проектных направлений."
-        ),
-    }
-    # Своя причина в начале концовки. Приглашение переписать бриф при этом остается:
-    # снизить цену ошибки реально, в отличие от запрещенной темы и чужого формата.
-    _REJECT_GROUND_CLOSING_PREFIXES = {
-        "production_criticality": (
-            "Ответственность за результат здесь выше той, что можно доверить "
-            "студенческой команде."
-        ),
-    }
-    _DEFAULT_REJECT_CLOSING = (
-        "Если вы готовы существенно изменить постановку задачи, можно "
-        "подготовить новый бриф с более ограниченным и учебно реализуемым "
-        "объёмом."
-    )
+    # Сами формулировки писем лежат в config/reject_letters.yaml: их правит тот, кто
+    # отвечает за переписку с заказчиком, и ради запятой трогать код не нужно.
 
     def __init__(
         self,
         *,
         result_builder: BriefAnalysisResultBuilder | None = None,
+        reject_letters_path: str | Path | None = None,
         tracing_client: TracingClient | None = None,
     ) -> None:
         """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
@@ -88,6 +74,9 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
             tracing_client=tracing_client or NoOpTracingClient(),
         )
         self._result_builder = result_builder or BriefAnalysisResultBuilder()
+        self._reject_letters = self._load_reject_letters(
+            reject_letters_path or self._default_reject_letters_path()
+        )
 
     def write_context(self, context: AIContext) -> AIContext:
         """Выполняет шаг «write context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
@@ -243,16 +232,17 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
             None,
         )
 
-        letter = self._REJECT_GROUND_LETTERS.get(ground)
+        letter = self._reject_letters.letters.get(ground)
         if letter is not None:
             return letter
 
         reasons = self._format_reasons(context)
-        closing_prefix = self._REJECT_GROUND_CLOSING_PREFIXES.get(ground)
+        closing_prefix = self._reject_letters.closing_prefixes.get(ground)
+        default_closing = self._reject_letters.default_closing
         closing = (
-            f"{closing_prefix} {self._DEFAULT_REJECT_CLOSING}"
+            f"{closing_prefix} {default_closing}"
             if closing_prefix is not None
-            else self._DEFAULT_REJECT_CLOSING
+            else default_closing
         )
         return (
             "Здравствуйте!\n\n"
@@ -338,3 +328,25 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         if plan.remove:
             parts.append("Исключить из первой версии: " + "; ".join(plan.remove))
         return "\n".join(parts)
+
+    @staticmethod
+    def _load_reject_letters(path: str | Path) -> _RejectLetters:
+        """Читает формулировки отказных писем из YAML-ресурса. Текст не нормализуем: заказчику уходит ровно то, что записано в файле."""
+        section = yaml.safe_load(Path(path).read_text(encoding="utf-8"))["reject_letters"]
+        grounds = section["grounds"]
+        return _RejectLetters(
+            letters={
+                item["key"]: item["letter"] for item in grounds if "letter" in item
+            },
+            closing_prefixes={
+                item["key"]: item["closing_prefix"]
+                for item in grounds
+                if "closing_prefix" in item
+            },
+            default_closing=section["default_closing"],
+        )
+
+    @staticmethod
+    def _default_reject_letters_path() -> Path:
+        """Возвращает значение по умолчанию, чтобы этап мог работать без ручной настройки."""
+        return Path(__file__).resolve().parents[2] / "config" / "reject_letters.yaml"
