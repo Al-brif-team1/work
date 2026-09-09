@@ -214,6 +214,7 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         )
 
     def _reject_response(self, context: AIContext) -> str:
+<<<<<<< HEAD
         """Собирает отказное письмо под основание отказа. Запрещенной теме и заявке не о заказе работы отвечаем одной фразой: перечень оснований и приглашение сократить объем там только вводят заказчика в заблуждение."""
         assessment = context.assessment_result
         # Порог тот же, что и у блока оснований: риск, который заказчику даже
@@ -244,11 +245,17 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
             if closing_prefix is not None
             else default_closing
         )
+
+        """Выполняет шаг «reject response». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        reasons = self._format_reasons(context)
         return (
             "Здравствуйте!\n\n"
             "Спасибо за бриф. По предварительной оценке проект в текущем виде "
             "не подходит для формата студенческой работы.\n\n"
-            f"{reasons}{closing}"
+            f"{reasons}"
+            "Если вы готовы существенно изменить постановку задачи, можно "
+            "подготовить новый бриф с более ограниченным и учебно реализуемым "
+            "объёмом."
         )
 
     def _summary(self, context: AIContext) -> str:
