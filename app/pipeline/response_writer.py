@@ -38,44 +38,6 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
     )
     _REPORTED_RISK_SEVERITIES = frozenset({RiskSeverity.high, RiskSeverity.critical})
 
-    # Отказы различаются не строгостью, а основанием, и заказчик должен понять, что
-    # именно ему делать дальше. Основание опознается по типу риска, а порядок задает
-    # приоритет: запрет темы сильнее несоответствия формата, тот - сильнее
-    # запредельной ответственности.
-    _REJECT_GROUND_PRIORITY = (
-        "restricted_topic",
-        "out_of_scope_request",
-        "production_criticality",
-    )
-    # Здесь объяснять нечего: заявка отклонена не из-за качества брифа. Поэтому письмо
-    # состоит из одной фразы - без блока оснований, который читается как чек-лист
-    # «чего не хватило», и без приглашения переписать бриф.
-    _REJECT_GROUND_LETTERS = {
-        "restricted_topic": (
-            "Здравствуйте!\n\n"
-            "Спасибо за бриф. Проект относится к направлению, с которым "
-            "Мастерская Яндекс Практикума не работает."
-        ),
-        "out_of_scope_request": (
-            "Здравствуйте!\n\n"
-            "Спасибо за бриф. Запрос относится к формату, которого нет среди "
-            "поддерживаемых проектных направлений."
-        ),
-    }
-    # Своя причина в начале концовки. Приглашение переписать бриф при этом остается:
-    # снизить цену ошибки реально, в отличие от запрещенной темы и чужого формата.
-    _REJECT_GROUND_CLOSING_PREFIXES = {
-        "production_criticality": (
-            "Ответственность за результат здесь выше той, что можно доверить "
-            "студенческой команде."
-        ),
-    }
-    _DEFAULT_REJECT_CLOSING = (
-        "Если вы готовы существенно изменить постановку задачи, можно "
-        "подготовить новый бриф с более ограниченным и учебно реализуемым "
-        "объёмом."
-    )
-
     def __init__(
         self,
         *,
@@ -225,40 +187,16 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
         )
 
     def _reject_response(self, context: AIContext) -> str:
-        """Собирает отказное письмо под основание отказа. Запрещенной теме и заявке не о заказе работы отвечаем одной фразой: перечень оснований и приглашение сократить объем там только вводят заказчика в заблуждение."""
-        assessment = context.assessment_result
-        # Порог тот же, что и у блока оснований: риск, который заказчику даже
-        # не показывают, не должен определять текст письма.
-        reported_types = (
-            {
-                risk.type
-                for risk in assessment.risks
-                if risk.severity in self._REPORTED_RISK_SEVERITIES
-            }
-            if assessment is not None
-            else set()
-        )
-        ground = next(
-            (item for item in self._REJECT_GROUND_PRIORITY if item in reported_types),
-            None,
-        )
-
-        letter = self._REJECT_GROUND_LETTERS.get(ground)
-        if letter is not None:
-            return letter
-
+        """Выполняет шаг «reject response». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         reasons = self._format_reasons(context)
-        closing_prefix = self._REJECT_GROUND_CLOSING_PREFIXES.get(ground)
-        closing = (
-            f"{closing_prefix} {self._DEFAULT_REJECT_CLOSING}"
-            if closing_prefix is not None
-            else self._DEFAULT_REJECT_CLOSING
-        )
         return (
             "Здравствуйте!\n\n"
             "Спасибо за бриф. По предварительной оценке проект в текущем виде "
             "не подходит для формата студенческой работы.\n\n"
-            f"{reasons}{closing}"
+            f"{reasons}"
+            "Если вы готовы существенно изменить постановку задачи, можно "
+            "подготовить новый бриф с более ограниченным и учебно реализуемым "
+            "объёмом."
         )
 
     def _summary(self, context: AIContext) -> str:
