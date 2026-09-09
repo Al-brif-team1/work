@@ -184,6 +184,7 @@ if (prefersReducedMotion) {
 const analyzeButton = document.querySelector(".analyze-button");
 const analysisState = document.querySelector(".analysis-state");
 const mockResult = document.querySelector(".mock-result");
+const resultMockup = document.querySelector("#result-mock");
 const briefTextarea = document.querySelector(".demo-input textarea");
 
 function textOrFallback(value, fallback) {
@@ -194,6 +195,109 @@ function textOrFallback(value, fallback) {
 
 function numberOrFallback(value, fallback) {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : fallback;
+}
+
+function textList(values, fallback) {
+  if (!Array.isArray(values)) return fallback;
+  const items = values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  return items.length > 0 ? items.join("; ") : fallback;
+}
+
+function namedItems(values, fallback) {
+  if (!Array.isArray(values)) return fallback;
+  const items = values
+    .map((value) => {
+      if (!value || typeof value !== "object") return "";
+      return textOrFallback(value.name, textOrFallback(value.question, textOrFallback(value.description, "")));
+    })
+    .filter(Boolean);
+  return items.length > 0 ? items.join("; ") : fallback;
+}
+
+function renderResultMockup(payload, view) {
+  if (!view) return;
+
+  const decision = payload?.decision ?? {};
+  const extraction = payload?.extraction ?? {};
+  const completeness = payload?.completeness ?? {};
+  const trafficLight = payload?.traffic_light ?? {};
+  const risks = payload?.risks ?? {};
+  const mvp = payload?.mvp ?? {};
+  const customerResponse = payload?.customer_response ?? {};
+
+  const finalStatus = textOrFallback(decision.final_status, "UNKNOWN");
+  const summary = textOrFallback(decision.summary, "Analysis result received.");
+  const completenessLevel = textOrFallback(completeness.level, "n/a");
+  const trafficStatus = textOrFallback(trafficLight.status, "n/a");
+  const riskCount = numberOrFallback(risks.count, "n/a");
+  const maxRiskSeverity = textOrFallback(risks.max_severity, "n/a");
+
+  const lead = view.querySelector(".result-lead");
+  if (lead) {
+    const status = lead.querySelector("strong");
+    const title = lead.querySelector("h2");
+    const description = lead.querySelector("p:not(.eyebrow)");
+    if (status) status.textContent = finalStatus;
+    if (title) title.textContent = summary;
+    if (description) {
+      description.textContent = textList(
+        decision.reasons,
+        "Detailed result is rendered from the backend DTO used by the compact card."
+      );
+    }
+  }
+
+  const summaryValues = view.querySelectorAll(".summary-grid strong");
+  const summaryGridValues = [
+    finalStatus,
+    completenessLevel,
+    trafficStatus,
+    `${riskCount} / ${maxRiskSeverity}`
+  ];
+  summaryValues.forEach((item, index) => {
+    item.textContent = summaryGridValues[index] ?? "n/a";
+  });
+
+  const detailParagraphs = view.querySelectorAll(".accordion details p");
+  const extractedBrief = extraction.extracted_brief ?? {};
+  const mvpPlan = mvp.plan ?? {};
+  const details = [
+    textList(decision.reasons, summary),
+    textOrFallback(
+      extractedBrief.goal,
+      namedItems(extractedBrief.tasks, "Extracted brief details are unavailable.")
+    ),
+    [
+      `level: ${completenessLevel}`,
+      `critical: ${numberOrFallback(completeness.critical_missing_information?.length, "0")}`,
+      `optional: ${numberOrFallback(completeness.optional_missing_information?.length, "0")}`
+    ].join("; "),
+    [
+      `status: ${trafficStatus}`,
+      textOrFallback(trafficLight.reason, ""),
+      namedItems(trafficLight.matches, "")
+    ].filter(Boolean).join("; "),
+    namedItems(risks.items, `count: ${riskCount}; max severity: ${maxRiskSeverity}`),
+    textOrFallback(customerResponse.text, "Customer response draft is unavailable.")
+  ];
+  detailParagraphs.forEach((item, index) => {
+    item.textContent = details[index] ?? "n/a";
+  });
+
+  const mvpPanel = view.querySelector(".mvp-panel");
+  if (mvpPanel) {
+    const title = mvpPanel.querySelector("h3");
+    const paragraphs = mvpPanel.querySelectorAll("p");
+    if (title) title.textContent = finalStatus === "SIMPLIFY" ? "MVP" : finalStatus;
+    const keep = namedItems(mvpPlan.keep, "No MVP keep list in DTO.");
+    const simplify = namedItems(mvpPlan.simplify, "No MVP simplify list in DTO.");
+    const exclude = namedItems(mvpPlan.exclude, "No MVP exclude list in DTO.");
+    [keep, simplify, exclude].forEach((value, index) => {
+      if (paragraphs[index]) paragraphs[index].textContent = value;
+    });
+  }
 }
 
 function renderAnalysisResult(payload) {
@@ -235,6 +339,7 @@ function renderAnalysisResult(payload) {
   customerParagraph.textContent = responseText;
 
   mockResult.append(status, summaryParagraph, metrics, customerParagraph);
+  renderResultMockup(payload, resultMockup);
 }
 
 if (analyzeButton && analysisState && mockResult && briefTextarea) {
