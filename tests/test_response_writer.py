@@ -411,6 +411,17 @@ def make_reject_context(
     )
 
 
+def reject_context_with_risks(*risks: Risk) -> AIContext:
+    """Подменяет риски в контексте отказа. Основание отказа - и вместе с ним текст письма - определяется именно их типом, а критерии остаются прежними: так видно, пропал ли блок оснований."""
+    context = make_reject_context()
+    assessment = context.assessment_result
+    assert assessment is not None
+
+    return context.with_assessment_result(
+        assessment.model_copy(update={"risks": list(risks)})
+    )
+
+
 def make_empty_question_result() -> QuestionGenerationResult:
     """Выполняет шаг «make empty question result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
     return QuestionGenerationResult(
@@ -1479,52 +1490,127 @@ class TestResponseWriterReasons(unittest.TestCase):
             updated.final_response_text,
         )
 
-    def test_out_of_scope_reject_letter_explains_the_ground(self) -> None:
-        # Заявка не про формат Мастерской: заказчик должен увидеть причину
-        # отказа, а не уточняющие вопросы.
-        base = make_reject_context()
-        assessment = base.assessment_result
-        assert assessment is not None
-        context = base.with_assessment_result(
-            assessment.model_copy(
-                update={
-                    "criterion_evaluations": [
-                        CriterionEvaluation(
-                            criterion="request_eligibility",
-                            criterion_title="Request eligibility",
-                            status=CriterionEvaluationStatus.not_met,
-                            explanation=(
-                                "Заявка предлагает сотрудничество, а не задачу "
-                                "с цифровым результатом для заказчика."
-                            ),
-                        ),
-                    ],
-                    "risks": [
-                        Risk(
-                            type="out_of_scope_request",
-                            description=(
-                                "Бриф не содержит проектной задачи для команды "
-                                "выпускников."
-                            ),
-                            severity=RiskSeverity.critical,
-                        )
-                    ],
-                }
+    def test_out_of_scope_reject_letter_names_unsupported_format(self) -> None:
+        # Заявка не про заказ работы: перечень оснований читался бы как чек-лист
+        # «чего не хватило», хотя досылать заказчику нечего.
+        context = reject_context_with_risks(
+            Risk(
+                type="out_of_scope_request",
+                description=(
+                    "Бриф не содержит проектной задачи для команды выпускников."
+                ),
+                severity=RiskSeverity.critical,
             )
         )
 
         updated = ResponseWriterStage().run_context(context)
 
+        self.assertIn(
+            "Запрос относится к формату, которого нет среди поддерживаемых "
+            "проектных направлений.",
+            updated.final_response_text,
+        )
+        self.assertNotIn("Основания оценки:", updated.final_response_text)
+        self.assertNotIn("объёмом", updated.final_response_text)
+        self.assertNotIn("Вопросы", updated.final_response_text)
+
+    def test_restricted_topic_reject_letter_names_direction(self) -> None:
+        # Тема из стоп-листа: ни названия темы, ни сработавшей формулировки
+        # заказчику не показываем - криптобиржа поменьше остается криптобиржей.
+        context = reject_context_with_risks(
+            Risk(
+                type="restricted_topic",
+                description=(
+                    "Мастерская не берёт проекты, связанные с криптовалютами. "
+                    "Тема «Криптовалюты, токены и Web3» определена по "
+                    "формулировке — Текст заявки: нужна криптобиржа."
+                ),
+                severity=RiskSeverity.critical,
+            )
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+
+        self.assertIn(
+            "Проект относится к направлению, с которым Мастерская Яндекс "
+            "Практикума не работает.",
+            updated.final_response_text,
+        )
+        self.assertNotIn("Основания оценки:", updated.final_response_text)
+        self.assertNotIn("Криптовалюты", updated.final_response_text)
+        self.assertNotIn("криптобиржа", updated.final_response_text)
+        self.assertNotIn("объёмом", updated.final_response_text)
+
+    def test_restricted_topic_outranks_other_reject_grounds(self) -> None:
+        # Оценка может выставить несколько критических рисков сразу: письмо
+        # не должно зависеть от порядка, в котором их вернула модель.
+        context = reject_context_with_risks(
+            Risk(
+                type="production_criticality",
+                description="Заказчик ожидает промышленной надёжности.",
+                severity=RiskSeverity.critical,
+            ),
+            Risk(
+                type="restricted_topic",
+                description="Мастерская не берёт проекты про криптовалюты.",
+                severity=RiskSeverity.critical,
+            ),
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+
+        self.assertIn(
+            "Проект относится к направлению",
+            updated.final_response_text,
+        )
+
+    def test_production_criticality_reject_letter_names_responsibility(self) -> None:
+        # Здесь переписать бриф действительно может помочь: снизить цену ошибки
+        # реально, поэтому приглашение остается, но причина названа своя.
+        updated = ResponseWriterStage().run_context(make_reject_context())
+
+        self.assertIn(
+            "Ответственность за результат здесь выше той, что можно доверить "
+            "студенческой команде.",
+            updated.final_response_text,
+        )
         self.assertIn("Основания оценки:", updated.final_response_text)
         self.assertIn(
-            "Заявка предлагает сотрудничество",
+            "Если вы готовы существенно изменить постановку задачи",
             updated.final_response_text,
         )
+
+    def test_reject_without_blocking_risk_keeps_default_closing(self) -> None:
+        # Отказ по красному светофору: основания у него другие, поэтому письмо
+        # остается прежним.
+        updated = ResponseWriterStage().run_context(
+            make_context(DecisionStatus.reject)
+        )
+
         self.assertIn(
-            "Бриф не содержит проектной задачи",
+            "Если вы готовы существенно изменить постановку задачи",
             updated.final_response_text,
         )
-        self.assertNotIn("Вопросы", updated.final_response_text)
+        self.assertNotIn("Ответственность за результат", updated.final_response_text)
+        self.assertNotIn("Запрос относится к формату", updated.final_response_text)
+
+    def test_low_severity_ground_does_not_rewrite_the_letter(self) -> None:
+        # Риск, который заказчику даже не показывают, не должен менять письмо.
+        context = reject_context_with_risks(
+            Risk(
+                type="out_of_scope_request",
+                description="Бриф не содержит проектной задачи.",
+                severity=RiskSeverity.low,
+            )
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+
+        self.assertNotIn("Запрос относится к формату", updated.final_response_text)
+        self.assertIn(
+            "Если вы готовы существенно изменить постановку задачи",
+            updated.final_response_text,
+        )
 
     def test_reasons_block_is_omitted_when_nothing_explains_verdict(self) -> None:
         # Единственный критерий выполнен, рисков нет - обосновывать отказ нечем.
