@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Brief Analyst Demo Story Prototype</title>
+    <meta
+      name="description"
+      content="Static V2 prototype for AI Brief Analyst: one brief travels from text to controlled decision."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#overview" aria-label="AI Brief Analyst">
+        <span class="brand-mark"></span>
+        <span>AI Brief Analyst</span>
+      </a>
+      <nav class="nav" aria-label="Основная навигация">
+        <a href="#story-facts">Путь брифа</a>
+        <a href="#journey">Правила</a>
+        <a href="#capabilities">Возможности</a>
+        <a href="#demo">Демо</a>
+        <a href="#architecture">Архитектура</a>
+      </nav>
+      <a class="header-cta" href="#demo">Проверить бриф <span aria-hidden="true">→</span></a>
+    </header>
+
+    <main>
+      <section class="hero section" id="overview">
+        <div class="hero-copy reveal">
+          <p class="eyebrow">AI BRIEF ANALYST</p>
+          <h1>Из проектного брифа —<br />в обоснованное решение.</h1>
+          <p class="hero-subtitle">
+            Система превращает неструктурированный текст в проверяемые факты,
+            оценивает проект и применяет контролируемые бизнес-правила.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#story-facts">Посмотрим, как принимается решение <span>→</span></a>
+            <a class="button secondary" href="#demo">Проверить бриф</a>
+          </div>
+          <p class="hero-thesis">Один текст. Несколько десятков фактов. Одно решение.</p>
+        </div>
+
+        <aside class="incoming-brief reveal" aria-label="Пример входящего брифа" data-demo-placeholder="mock-brief">
+          <div class="incoming-topline">
+            <span>Входящий бриф</span>
+            <small>пример для прототипа</small>
+          </div>
+          <p>
+            Нужно сделать сервис для онлайн-записи в образовательный центр:
+            личный кабинет ученика, расписание, оплату, уведомления и интеграцию
+            с CRM. Хотим запустить первую версию за месяц. Материалы частично
+            готовы: есть таблица курсов и презентация, но нет технического
+            задания и описания ролей.
+          </p>
+        </aside>
+      </section>
+
+      <section class="invitation-bridge section">
+        <div class="bridge-line reveal">
+          <span>Решение начинается не с класса.</span>
+          <strong>Оно начинается с самого брифа.</strong>
+          <p>Проследим путь одного проекта — от свободного текста до финального решения.</p>
+        </div>
+      </section>
+
+      <section class="story-section story-facts" id="story-facts" data-story="facts">
+        <div class="story-sticky">
+          <div class="story-copy">
+            <p class="eyebrow">Brief to facts</p>
+            <h2 data-story-title>Сначала был текст.</h2>
+            <p data-story-text>
+              Обычный проектный бриф: свободная форма, разная детализация,
+              важные факты вперемешку с контекстом.
+            </p>
+            <small data-story-label>EXTRACTOR · AI</small>
+          </div>
+
+          <div class="brief-transform" data-demo-placeholder="mock-extraction">
+            <article class="brief-document">
+              <div class="document-topline">Тот же самый бриф</div>
+              <p>
+                Нужно сделать сервис для
+                <mark data-highlight="goal">онлайн-записи в образовательный центр</mark>:
+                <mark data-highlight="tasks">личный кабинет ученика, расписание, оплату,
+                уведомления и интеграцию с CRM</mark>. Хотим запустить первую
+                версию <mark data-highlight="deadline">за месяц</mark>. Материалы
+                частично готовы: <mark data-highlight="materials">есть таблица курсов
+                и презентация</mark>, но <mark data-highlight="constraints">нет
+                технического задания и описания ролей</mark>.
+              </p>
+            </article>
+
+            <aside class="facts-panel">
+              <div class="facts-empty">Структура появится после выделения смысла.</div>
+              <div class="facts-title">Разобранный бриф</div>
+              <div class="fact-row" data-fact="goal"><span>Цель</span><strong>Сервис онлайн-записи для образовательного центра</strong></div>
+              <div class="fact-row" data-fact="tasks"><span>Задачи</span><strong>Кабинет · Расписание · Оплата · Уведомления · CRM</strong></div>
+              <div class="fact-row" data-fact="deadline"><span>Срок</span><strong>1 месяц</strong></div>
+              <div class="fact-row" data-fact="materials"><span>Материалы</span><strong>Частично готовы</strong></div>
+              <div class="fact-row" data-fact="constraints"><span>Пробелы</span><strong>ТЗ · Роли пользователей</strong></div>
+              <p class="facts-payoff">Свободный текст преобразован в структурированные факты, которые можно проверять дальше.</p>
+            </aside>
+          </div>
+        </div>
+        <div class="story-steps" aria-hidden="true">
+          <span data-step="0"></span>
+          <span data-step="1"></span>
+          <span data-step="2"></span>
+          <span data-step="3"></span>
+        </div>
+      </section>
+
+      <section class="story-section story-decision story-portrait" data-story="decision">
+        <div class="story-sticky">
+          <div class="story-copy">
+            <p class="eyebrow">Project portrait</p>
+            <div class="story-transition">Теперь за текстом виден сам проект.</div>
+            <h2 data-decision-title>Система видит не только то, что уже известно.</h2>
+            <p data-decision-text>
+              Она показывает, чего не хватает, подходит ли работа правилам проекта
+              и где появляются риски.
+            </p>
+            <small data-decision-label>COMPLETENESS · RULES</small>
+          </div>
+
+          <div class="decision-stage unified-stage" data-demo-placeholder="mock-checks">
+            <div class="verified-object">
+              <div class="facts-title">Разобранный бриф</div>
+              <div class="verified-row" data-layer="goal"><span>Цель</span><strong>Сервис онлайн-записи</strong><b data-status="ok">✓</b></div>
+              <div class="verified-row" data-layer="tasks"><span>Задачи</span><strong>Кабинет · Расписание · Оплата · Уведомления · CRM</strong><b data-status="ok">✓</b></div>
+              <div class="verified-row" data-layer="deadline"><span>Срок</span><strong>1 месяц</strong><b data-status="ok">✓</b></div>
+              <div class="verified-row" data-layer="materials"><span>Материалы</span><strong>Частично готовы</strong><b data-status="later">○</b></div>
+              <div class="verified-row" data-layer="roles"><span>Роли пользователей</span><strong>Не детализированы</strong><b data-status="later">○</b></div>
+              <div class="legend" data-layer="legend"><span>✓ есть</span><span>○ можно уточнить</span><span>без блокировки</span></div>
+              <div class="check-insight" data-layer="completeness-insight">
+                <div><strong>0 блокирующих пробелов</strong><span>Информации достаточно для решения.</span></div>
+                <div><strong>1 уточнение</strong><span>Роли и материалы можно детализировать позже.</span></div>
+                <p>Не все пробелы одинаково критичны.</p>
+              </div>
+            </div>
+
+            <div class="analysis-layer">
+              <div class="signal traffic-signal" data-layer="traffic">
+                <span>фрагмент из брифа</span>
+                <strong>«оплата и интеграция с CRM»</strong>
+                <div class="signal-chain"><span>Задача</span><span>Правило</span><b>YELLOW</b></div>
+                <em>Система оценивает не только качество брифа, но и соответствие самой работы правилам проекта.</em>
+              </div>
+              <div class="signal risk-signal" data-layer="risks">
+                <span>факт → сигнал</span>
+                <div><strong>5 крупных задач</strong><i></i><em>Большой объём · HIGH</em></div>
+                <div><strong>Срок: 1 месяц</strong><i></i><em>Сжатый срок · MEDIUM</em></div>
+                <p>Система видит, где проект становится рискованным.</p>
+              </div>
+              <div class="portrait-summary" data-layer="portrait">
+                <span>Проект</span>
+                <strong>Сервис онлайн-записи</strong>
+                <div>Определённость: цель ✓ · задачи ✓ · роли ○</div>
+                <div>Соответствие: YELLOW</div>
+                <div>Риски: большой объём · сжатый срок</div>
+                <p>Теперь мы понимаем проект.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="story-steps" aria-hidden="true">
+          <span data-step="0"></span>
+          <span data-step="1"></span>
+          <span data-step="2"></span>
+          <span data-step="3"></span>
+        </div>
+      </section>
+
+      <section class="arbiter-story section" id="journey">
+        <div class="section-heading reveal">
+          <p class="eyebrow">Decision layer</p>
+          <h2>Но анализ — ещё не решение.</h2>
+          <p>
+            Полнота, соответствие и риски дают разные сигналы.
+            Их нужно собрать в одно итоговое решение.
+          </p>
+        </div>
+        <div class="arbiter-flow reveal" data-demo-placeholder="mock-arbiter">
+          <div class="decision-question">
+            <p class="eyebrow">Arbiter</p>
+            <h2>Как система принимает решение?</h2>
+            <p>
+              Сигналы говорят о разных сторонах проекта.
+              Нужен один итоговый класс.
+            </p>
+          </div>
+
+          <div class="analysis-results">
+            <article>
+              <span>Информации достаточно</span>
+              <strong>Блокирующих пробелов нет</strong>
+              <small>blocking_missing_count = 0</small>
+            </article>
+            <article>
+              <span>Соответствие</span>
+              <strong>Есть YELLOW-сигнал</strong>
+              <small>traffic_light = yellow</small>
+            </article>
+            <article>
+              <span>Риск</span>
+              <strong>Объём проекта слишком большой</strong>
+              <small>scope_too_large</small>
+            </article>
+            <article>
+              <span>Дополнительные уточнения</span>
+              <strong>Есть некритичный вопрос</strong>
+              <small>optional_missing_count = 1</small>
+            </article>
+          </div>
+
+          <div class="flow-arrow" aria-hidden="true">↓</div>
+
+          <div class="arbiter-node">
+            <span>Слой принятия решения</span>
+            <strong>ARBITER</strong>
+            <p>
+              Он не анализирует текст заново. Он получает результаты предыдущих
+              проверок и применяет к ним бизнес-правила.
+            </p>
+            <small>DETERMINISTIC · 0 LLM</small>
+          </div>
+
+          <div class="flow-arrow" aria-hidden="true">↓</div>
+
+          <div class="rule-walkthrough" aria-label="Проверка бизнес-правил">
+            <article class="rule-check passed">
+              <span>01</span>
+              <div>
+                <h3>Есть блокирующая причина для отказа?</h3>
+                <p>Для текущего проекта нет такого сигнала.</p>
+                <small>НЕ СРАБОТАЛО</small>
+              </div>
+            </article>
+            <article class="rule-check passed">
+              <span>02</span>
+              <div>
+                <h3>Не хватает критичной информации?</h3>
+                <p>Блокирующих пробелов нет.</p>
+                <em>blocking_missing_count = 0</em>
+                <small>НЕ СРАБОТАЛО</small>
+              </div>
+            </article>
+            <article class="rule-check matched">
+              <span>03</span>
+              <div>
+                <h3>Объём первой версии слишком велик?</h3>
+                <p>
+                  Кабинет, расписание, оплата, уведомления и CRM-интеграция
+                  должны появиться за 1 месяц.
+                </p>
+                <strong>Большой объём проекта</strong>
+                <em>scope_too_large</em>
+                <small>СРАБОТАЛО</small>
+              </div>
+            </article>
+            <div class="flow-stop">Правило сработало. Дальнейшие проверки не нужны.</div>
+            <article class="rule-check stopped">
+              <span>04</span>
+              <div>
+                <h3>Следующие проверки</h3>
+                <p>Не разворачиваются после найденного решения.</p>
+              </div>
+            </article>
+          </div>
+        </div>
+        <div class="arbiter-payoff reveal">
+          <strong>SIMPLIFY</strong>
+          <p>Проект подходит, но объём первой версии нужно сократить.</p>
+          <h3>LLM анализирует. Правила решают.</h3>
+          <small>ARBITER · DETERMINISTIC · 0 LLM</small>
+        </div>
+        <div class="trace-back reveal">
+          <div class="trace-intro">
+            <p class="eyebrow">Explainability</p>
+            <h3>У решения есть путь.</h3>
+            <p>Его можно проследить от итогового класса до исходных данных.</p>
+          </div>
+          <div class="reverse-trace">
+            <article>
+              <span>Решение</span>
+              <strong>SIMPLIFY</strong>
+            </article>
+            <article>
+              <span>Правило</span>
+              <strong>Первая версия требует сокращения объёма</strong>
+              <small>simplify_scope_too_large</small>
+            </article>
+            <article>
+              <span>Сигнал</span>
+              <strong>Большой объём проекта</strong>
+              <small>scope_too_large</small>
+            </article>
+            <article>
+              <span>Основание</span>
+              <strong>5 функциональных блоков, CRM-интеграция и срок 1 месяц</strong>
+            </article>
+            <article>
+              <span>Источник</span>
+              <strong>Исходный бриф</strong>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="next-action section">
+        <div class="section-heading reveal">
+          <p class="eyebrow">Next action</p>
+          <h2>Теперь нужно собрать реалистичную первую версию.</h2>
+          <p>
+            Система определяет, что оставить, что упростить
+            и что исключить из MVP.
+          </p>
+          <small class="technical-note">MVP PLANNER · AI · ONLY FOR SIMPLIFY</small>
+        </div>
+        <div class="mvp-story reveal" data-demo-placeholder="mock-mvp">
+          <div class="scope-source">
+            <span>Исходный объём проекта</span>
+            <strong>Кабинет · Расписание · Оплата · Уведомления · CRM</strong>
+            <small>Первая версия за 1 месяц</small>
+          </div>
+          <div class="flow-arrow" aria-hidden="true">↓</div>
+          <div class="mvp-actions">
+            <article class="keep">
+              <h3>ОСТАВИТЬ</h3>
+              <p>То, что нужно в MVP без существенных изменений.</p>
+              <div><span>Онлайн-запись</span><b>без изменений</b></div>
+              <div><span>Расписание</span><b>без изменений</b></div>
+            </article>
+            <article class="simplify-action">
+              <h3>УПРОСТИТЬ</h3>
+              <p>То, что нужно в MVP, но может быть реализовано проще.</p>
+              <div><span>Личный кабинет ученика</span><b>базовый кабинет</b></div>
+              <div><span>Онлайн-оплата</span><b>базовый сценарий оплаты</b></div>
+              <div><span>Уведомления</span><b>только email</b></div>
+            </article>
+            <article class="exclude">
+              <h3>ИСКЛЮЧИТЬ</h3>
+              <p>
+                То, что не требуется для цели первой версии и не входит в MVP.
+              </p>
+              <div><span>Глубокая CRM-интеграция</span><b>вне MVP</b></div>
+              <small>Исключить из MVP, не обязательно из проекта навсегда.</small>
+            </article>
+          </div>
+          <div class="flow-arrow" aria-hidden="true">↓</div>
+          <div class="assembled-mvp">
+            <div>
+              <span>MVP</span>
+              <strong>ПЕРВАЯ ВЕРСИЯ</strong>
+            </div>
+            <ul>
+              <li>Онлайн-запись</li>
+              <li>Расписание</li>
+              <li>Базовый кабинет ученика</li>
+              <li>Базовый сценарий оплаты</li>
+              <li>Email-уведомления</li>
+            </ul>
+          </div>
+          <div class="outside-mvp">CRM-интеграция остаётся за границей MVP</div>
+        </div>
+        <p class="section-thesis reveal">
+          Из большого проекта — в реалистичную первую версию.
+        </p>
+      </section>
+
+      <section class="decision-paths section">
+        <div class="section-heading reveal">
+          <p class="eyebrow">Decision paths</p>
+          <h2>Но SIMPLIFY — только один из возможных путей.</h2>
+        </div>
+        <div class="path-list reveal">
+          <article><strong>ACCEPT</strong><p>Можно брать в работу.</p><span>→ сформировать результат</span></article>
+          <article><strong>ACCEPT_WITH_CLARIFICATIONS</strong><p>Можно принять, но есть некритичные вопросы.</p><span>→ собрать уточнения</span></article>
+          <article><strong>CLARIFY</strong><p>Недостаточно критичной информации.</p><span>→ задать вопросы</span></article>
+          <article class="selected"><strong>SIMPLIFY</strong><p>Проект подходит, но объём слишком большой.</p><span>→ подготовить MVP</span></article>
+          <article><strong>MENTOR_REVIEW</strong><p>Нужна профильная экспертная оценка.</p><span>→ передать специалисту</span></article>
+          <article><strong>REJECT</strong><p>Проект не проходит правила.</p><span>→ остановить обработку и объяснить причину</span></article>
+        </div>
+        <div class="compact-economics reveal">
+          <div><strong>EARLY REJECT</strong><span>0 LLM stages</span></div>
+          <div><strong>TYPICAL ACCEPT</strong><span>2 LLM stages</span></div>
+          <div><strong>SIMPLIFY</strong><span>3 LLM stages</span></div>
+        </div>
+        <p class="note reveal">LLM stages ≠ гарантированное число API requests при retries.</p>
+        <p class="section-thesis reveal">AI используется там, где нужен смысл. Правила — там, где нужна определённость.</p>
+      </section>
+
+      <section class="capabilities section" id="capabilities">
+        <div class="section-heading reveal">
+          <p class="eyebrow">Capabilities</p>
+          <h2>Один бриф. Четыре задачи системы.</h2>
+        </div>
+        <div class="capability-flow reveal">
+          <article class="capability-step">
+            <span>01</span>
+            <h3>ПОНЯТЬ</h3>
+            <p>Превратить свободный текст в структурированные факты и задачи.</p>
+            <small>Extractor · AI</small>
+          </article>
+          <article class="capability-step">
+            <span>02</span>
+            <h3>ПРОВЕРИТЬ</h3>
+            <p>Определить, чего не хватает, проверить соответствие и увидеть риски.</p>
+            <small>Completeness · Assessment · Traffic Light</small>
+          </article>
+          <article class="capability-step">
+            <span>03</span>
+            <h3>РЕШИТЬ</h3>
+            <p>Применить бизнес-правила и определить следующий шаг.</p>
+            <small>Arbiter · Rules</small>
+          </article>
+          <article class="capability-step">
+            <span>04</span>
+            <h3>ОБЪЯСНИТЬ</h3>
+            <p>Показать основания решения и сформировать результат для дальнейшей работы.</p>
+            <small>Evidence · Questions · MVP · Response</small>
+          </article>
+        </div>
+      </section>
+
+      <section class="demo section" id="demo">
+        <div class="section-heading reveal">
+          <p class="eyebrow">Interactive mock</p>
+          <h2>Теперь попробуйте на своём брифе.</h2>
+        </div>
+        <div class="demo-shell reveal" data-demo-placeholder="mock-live-demo">
+          <div class="demo-input">
+            <div class="panel-topline">
+              <span>Редактируемый бриф</span>
+              <small>прототип без backend</small>
+            </div>
+            <textarea spellcheck="false">Нужно сделать сервис для онлайн-записи, личный кабинет, оплату, аналитику и интеграцию с CRM. Желательно за месяц, материалов почти нет.</textarea>
+            <button class="button primary analyze-button" type="button">Проанализировать</button>
+          </div>
+          <div class="demo-output" aria-live="polite">
+            <div class="analysis-state">Вставьте или измените бриф.</div>
+            <div class="mock-result hidden">
+              <strong>SIMPLIFY</strong>
+              <p>Проект подходит, но объём стоит сократить.</p>
+              <div class="demo-summary">
+                <span>Решение</span><span>Полнота</span><span>Traffic Light</span><span>Риски</span>
+              </div>
+              <a class="button secondary" href="#result-mock">Почему такое решение? <span>↓</span></a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="result section" id="result-mock">
+        <div class="result-lead reveal" data-demo-placeholder="mock-result-details">
+          <p class="eyebrow">Result mockup</p>
+          <strong>SIMPLIFY</strong>
+          <h2>Проект подходит, но первый релиз нужно сузить.</h2>
+          <p>Это визуальная структура будущего результата. Значения здесь являются демонстрационным наполнением прототипа.</p>
+        </div>
+
+        <div class="summary-grid reveal">
+          <div><span>Решение</span><strong>Сузить MVP</strong></div>
+          <div><span>Полнота</span><strong>Есть уточнения</strong></div>
+          <div><span>Traffic Light</span><strong>Yellow</strong></div>
+          <div><span>Риски</span><strong>Большой объём</strong></div>
+        </div>
+
+        <div class="details-layout reveal">
+          <div class="accordion">
+            <details open>
+              <summary>Почему принято именно это решение?</summary>
+              <p>Сработало правило simplify_scope_too_large, потому что объём первого релиза превышает разумный MVP.</p>
+            </details>
+            <details>
+              <summary>Что система поняла</summary>
+              <p>Цель, задачи, материалы, ограничения и ожидаемый результат будут приходить из backend DTO.</p>
+            </details>
+            <details>
+              <summary>Полнота</summary>
+              <p>Критичные и некритичные пробелы будут показаны отдельными списками.</p>
+            </details>
+            <details>
+              <summary>Traffic Light</summary>
+              <p>Будут отображены source_quote, matched rule и статус.</p>
+            </details>
+            <details>
+              <summary>Риски</summary>
+              <p>Будут отображены риск, уровень серьёзности и основание.</p>
+            </details>
+            <details>
+              <summary>Ответ заказчику</summary>
+              <p>Здесь появится customer response draft.</p>
+            </details>
+          </div>
+
+          <div class="mvp-panel">
+            <h3>MVP</h3>
+            <div><span>Оставить</span><p>Запись, расписание, базовый кабинет.</p></div>
+            <div><span>Упростить</span><p>Оплату и уведомления сделать минимальными.</p></div>
+            <div><span>Исключить из MVP</span><p>Сложную CRM-интеграцию и расширенную аналитику.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="architecture section dark" id="architecture">
+        <div class="section-heading reveal">
+          <p class="eyebrow">Full Architecture</p>
+          <h2>Под капотом — гибридная архитектура AI + Rules.</h2>
+          <p>AI — там, где нужен смысл. Правила — там, где нужна определённость.</p>
+        </div>
+        <div class="architecture-teaser reveal">
+          <div class="pipeline-list">
+            <div><span>01</span><strong>Empty Brief Check</strong><em class="tag rules">RULES</em></div>
+            <div><span>02</span><strong>Security Gate</strong><em class="tag rules">RULES</em></div>
+            <div><span>03</span><strong>Extractor</strong><em class="tag ai">AI</em></div>
+            <div><span>04</span><strong>Completeness</strong><em class="tag rules">RULES</em></div>
+            <div class="nested"><span>05</span><strong>Assessment <small>└ Traffic Light</small></strong><em class="tag ai">AI</em></div>
+            <div><span>06</span><strong>Arbiter</strong><em class="tag rules">RULES</em></div>
+            <div><span>07</span><strong>Questions</strong><em class="tag template">TEMPLATES</em></div>
+            <div><span>08</span><strong>MVP Planner</strong><em class="tag conditional">AI / CONDITIONAL</em></div>
+            <div><span>09</span><strong>Response Writer</strong><em class="tag rules">RULES</em></div>
+          </div>
+          <aside class="architecture-note">
+            <p>
+              Модель используется там, где нужна интерпретация.
+              Проверки, маршрутизация и финальное решение контролируются правилами.
+            </p>
+            <span>Разобрать архитектуру →</span>
+          </aside>
+        </div>
+      </section>
+
+      <section class="benchmark section">
+        <div class="section-heading reveal">
+          <p class="eyebrow">Benchmark</p>
+          <h2>Архитектуру мало придумать — её нужно измерять.</h2>
+          <p>Качество системы измеряется на размеченном наборе проектных брифов.</p>
+        </div>
+        <div class="metric-placeholders reveal">
+          <div><span>Accuracy</span><strong>Quality metric placeholder</strong></div>
+          <div><span>Per-class results</span><strong>Placeholder for real benchmark</strong></div>
+          <div><span>Confusion matrix</span><strong>Placeholder for real matrix</strong></div>
+        </div>
+      </section>
+
+      <section class="final-cta section">
+        <div class="reveal">
+          <h2>От текста —<br />к контролируемому решению.</h2>
+          <div class="cta-words">
+            <span>Понять.</span>
+            <span>Проверить.</span>
+            <span>Объяснить.</span>
+          </div>
+          <a class="button primary" href="#demo">Проверить бриф <span>→</span></a>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

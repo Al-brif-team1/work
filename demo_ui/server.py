@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from functools import lru_cache
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictStr
 
 from app.config import Config
@@ -23,6 +25,7 @@ from app.pipeline import BriefAnalysisPipeline, BriefAnalysisPipelineError
 from demo_ui.dto import build_demo_response
 
 logger = logging.getLogger(__name__)
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 class AnalyzeRequest(BaseModel):
@@ -184,3 +187,6 @@ def _find_exception(
             return current
         current = current.__cause__ or current.__context__
     return None
+
+
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

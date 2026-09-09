@@ -169,6 +169,53 @@ class TestDemoServer(unittest.TestCase):
         self.assertEqual(response.json(), {"status": "ok"})
         self.assertEqual(pipeline.calls, [])
 
+    def test_root_serves_static_index_html(self) -> None:
+        response = TestClient(server.app).get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/html", response.headers["content-type"])
+        self.assertIn("<!doctype html>", response.text)
+        self.assertIn("./styles.css", response.text)
+        self.assertIn("./app.js", response.text)
+
+    def test_static_css_and_js_are_available(self) -> None:
+        client = TestClient(server.app)
+
+        css_response = client.get("/styles.css")
+        js_response = client.get("/app.js")
+
+        self.assertEqual(css_response.status_code, 200)
+        self.assertIn("text/css", css_response.headers["content-type"])
+        self.assertIn(":root", css_response.text)
+        self.assertEqual(js_response.status_code, 200)
+        self.assertIn("javascript", js_response.headers["content-type"])
+        self.assertIn('window.fetch("/api/analyze"', js_response.text)
+
+    def test_static_routing_does_not_intercept_api_routes(self) -> None:
+        pipeline = FakePipeline()
+        server.app.dependency_overrides[server.get_pipeline] = lambda: pipeline
+        client = TestClient(server.app)
+
+        analyze_response = client.post("/api/analyze", json={})
+        health_response = client.get("/health")
+
+        self.assertEqual(analyze_response.status_code, 422)
+        self.assertEqual(analyze_response.json()["error"]["type"], "request_validation")
+        self.assertEqual(health_response.status_code, 200)
+        self.assertEqual(health_response.json(), {"status": "ok"})
+        self.assertEqual(pipeline.calls, [])
+
+    def test_static_serving_does_not_expose_sensitive_repository_files(self) -> None:
+        client = TestClient(server.app)
+
+        for path in ("/.env", "/app/config.py", "/tests/test_demo_server.py"):
+            with self.subTest(path=path):
+                response = client.get(path)
+
+                self.assertEqual(response.status_code, 404)
+                self.assertNotIn("OPENAI_API_KEY", response.text)
+                self.assertNotIn("FakePipeline", response.text)
+
     def test_get_pipeline_builds_production_pipeline_once(self) -> None:
         settings = object()
         llm_client = object()
