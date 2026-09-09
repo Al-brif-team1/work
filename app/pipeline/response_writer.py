@@ -248,6 +248,36 @@ class ResponseWriterStage(BaseStage[AIContext, AIContext]):
 
         """Выполняет шаг «reject response». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         reasons = self._format_reasons(context)
+        """Собирает отказное письмо под основание отказа. Запрещенной теме и заявке не о заказе работы отвечаем одной фразой: перечень оснований и приглашение сократить объем там только вводят заказчика в заблуждение."""
+        assessment = context.assessment_result
+        # Порог тот же, что и у блока оснований: риск, который заказчику даже
+        # не показывают, не должен определять текст письма.
+        reported_types = (
+            {
+                risk.type
+                for risk in assessment.risks
+                if risk.severity in self._REPORTED_RISK_SEVERITIES
+            }
+            if assessment is not None
+            else set()
+        )
+        ground = next(
+            (item for item in self._REJECT_GROUND_PRIORITY if item in reported_types),
+            None,
+        )
+
+        letter = self._reject_letters.letters.get(ground)
+        if letter is not None:
+            return letter
+
+        reasons = self._format_reasons(context)
+        closing_prefix = self._reject_letters.closing_prefixes.get(ground)
+        default_closing = self._reject_letters.default_closing
+        closing = (
+            f"{closing_prefix} {default_closing}"
+            if closing_prefix is not None
+            else default_closing
+        )
         return (
             "Здравствуйте!\n\n"
             "Спасибо за бриф. По предварительной оценке проект в текущем виде "
