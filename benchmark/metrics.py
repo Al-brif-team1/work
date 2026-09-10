@@ -60,6 +60,14 @@ class BenchmarkMetrics:
     schema_invalid: int = 0
     schema_valid_rate: float = 0.0
     pipeline_success_rate: float = 0.0
+    tokens_total: int = 0
+    tokens_per_brief: float = 0.0
+    tokens_extractor_avg: float = 0.0
+    tokens_assessment_avg: float = 0.0
+    tokens_mvp_avg: float = 0.0
+    latency_avg: float = 0.0
+    latency_p95: float = 0.0
+    retry_rate: float = 0.0
 
 
 def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
@@ -73,6 +81,7 @@ def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
     skipped = 0
     errors = 0
     schema_invalid = 0
+    stats_rows: list[dict[str, str]] = []
 
     for index, row in enumerate(rows, start=2):
         gold_class = row.get("gold_class", "")
@@ -105,6 +114,7 @@ def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
         )
 
         evaluated_pairs.append((gold, predicted))
+        stats_rows.append(row)
 
     correct = sum(1 for gold, predicted in evaluated_pairs if gold == predicted)
     evaluated = len(evaluated_pairs)
@@ -112,6 +122,8 @@ def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
     incorrect = evaluated - correct
     accuracy = _safe_divide(correct, evaluated)
     confusion_matrix = _build_confusion_matrix(evaluated_pairs)
+
+    llm_stats = _build_llm_stats(stats_rows)
 
     return BenchmarkMetrics(
         total_rows=len(rows),
@@ -127,6 +139,7 @@ def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
         schema_invalid=schema_invalid,
         schema_valid_rate=_safe_divide(processed - schema_invalid, processed),
         pipeline_success_rate=_safe_divide(processed - errors, processed),
+        **llm_stats,
     )
 
 
@@ -210,6 +223,40 @@ def _build_transitions(
     return dict(sorted(counter.items()))
 
 
+def _build_llm_stats(rows: Sequence[dict[str, str]]) -> dict[str, float | int]:
+    def _values(column: str) -> list[float | int]:
+        result = []
+        for row in rows:
+            raw = row.get(column, "").strip()
+            if raw:
+                result.append(float(raw))
+        return result
+
+    totals = _values("tokens_total")
+    latencies = _values("latency_total")
+    attempts = _values("attempts_total")
+    calls = _values("llm_calls")
+
+    return {
+        "tokens_total": int(sum(totals)),
+        "tokens_per_brief": _safe_divide(sum(totals), len(totals)),
+        "tokens_extractor_avg": _safe_divide(sum(_values("tokens_extractor")), len(totals)),
+        "tokens_assessment_avg": _safe_divide(sum(_values("tokens_assessment")), len(totals)),
+        "tokens_mvp_avg": _safe_divide(sum(_values("tokens_mvp")), len(totals)),
+        "latency_avg": _safe_divide(sum(latencies), len(latencies)),
+        "latency_p95": _percentile(latencies, 95),
+        "retry_rate": _safe_divide(sum(attempts) - sum(calls), sum(calls)),
+    }
+
+
+def _percentile(values: Sequence[float], percentile: int) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = min(int(len(ordered) * percentile / 100), len(ordered) - 1)
+    return ordered[index]
+
+
 def _safe_divide(numerator: float, denominator: float) -> float:
     if denominator == 0:
         return 0.0
@@ -232,6 +279,16 @@ def format_metrics(metrics: BenchmarkMetrics) -> str:
         f"  schema_invalid: {metrics.schema_invalid}",
         f"  schema_valid_rate: {_format_float(metrics.schema_valid_rate)}",
         f"  pipeline_success_rate: {_format_float(metrics.pipeline_success_rate)}",
+        "",
+        "LLM usage:",
+        f"  tokens_total: {metrics.tokens_total}",
+        f"  tokens_per_brief: {_format_float(metrics.tokens_per_brief)}",
+        f"  tokens_extractor_avg: {_format_float(metrics.tokens_extractor_avg)}",
+        f"  tokens_assessment_avg: {_format_float(metrics.tokens_assessment_avg)}",
+        f"  tokens_mvp_avg: {_format_float(metrics.tokens_mvp_avg)}",
+        f"  latency_avg: {_format_float(metrics.latency_avg)}",
+        f"  latency_p95: {_format_float(metrics.latency_p95)}",
+        f"  retry_rate: {_format_float(metrics.retry_rate)}",
         "",
         "Per-class metrics:",
         _format_table(

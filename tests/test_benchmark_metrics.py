@@ -222,6 +222,85 @@ class TestBenchmarkMetrics(unittest.TestCase):
             self.assertEqual(metrics.schema_valid_rate, 1.0)
             self.assertEqual(metrics.pipeline_success_rate, 1.0)
 
+    def test_llm_stats_are_aggregated_from_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "predictions.csv"
+            with path.open("w", encoding="utf-8", newline="") as file:
+                writer = csv.DictWriter(
+                    file,
+                    fieldnames=(
+                        "id",
+                        "gold_class",
+                        "predicted_class",
+                        "correct",
+                        "error",
+                        "error_type",
+                        "tokens_extractor",
+                        "tokens_assessment",
+                        "tokens_mvp",
+                        "tokens_total",
+                        "latency_total",
+                        "attempts_total",
+                        "llm_calls",
+                    ),
+                )
+                writer.writeheader()
+                writer.writerows(
+                    [
+                        {
+                            "id": "1",
+                            "gold_class": "ACCEPT",
+                            "predicted_class": "accept",
+                            "correct": "true",
+                            "error": "",
+                            "error_type": "",
+                            "tokens_extractor": "100",
+                            "tokens_assessment": "200",
+                            "tokens_mvp": "",
+                            "tokens_total": "300",
+                            "latency_total": "4.000",
+                            "attempts_total": "2",
+                            "llm_calls": "2",
+                        },
+                        {
+                            "id": "2",
+                            "gold_class": "REJECT",
+                            "predicted_class": "reject",
+                            "correct": "true",
+                            "error": "",
+                            "error_type": "",
+                            "tokens_extractor": "100",
+                            "tokens_assessment": "400",
+                            "tokens_mvp": "",
+                            "tokens_total": "500",
+                            "latency_total": "6.000",
+                            "attempts_total": "3",
+                            "llm_calls": "2",
+                        },
+                    ]
+                )
+
+            metrics = compute_metrics(path)
+
+            self.assertEqual(metrics.tokens_total, 800)
+            self.assertEqual(metrics.tokens_per_brief, 400.0)
+            self.assertEqual(metrics.tokens_assessment_avg, 300.0)
+            self.assertEqual(metrics.tokens_mvp_avg, 0.0)
+            self.assertEqual(metrics.latency_avg, 5.0)
+            self.assertEqual(metrics.retry_rate, 0.25)
+
+    def test_missing_llm_columns_leave_stats_at_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "predictions.csv"
+            self._write_results(path, [self._row("1", "ACCEPT", "accept", "true")])
+
+            metrics = compute_metrics(path)
+
+            self.assertEqual(metrics.tokens_total, 0)
+            self.assertEqual(metrics.tokens_per_brief, 0.0)
+            self.assertEqual(metrics.latency_p95, 0.0)        
+
+
     @staticmethod
     def _row(
         case_id: str,
