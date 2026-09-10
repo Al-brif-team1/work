@@ -13,7 +13,6 @@ from app.schemas.ai_context import (
     PipelineResults,
     PipelineTechnicalState,
     ResponseState,
-    RetrievalState,
 )
 from app.schemas.brief import BriefInput, BriefInputMetadata
 from app.schemas.evaluation import (
@@ -40,12 +39,6 @@ from app.schemas.final_result import (
     BriefExtractedFields,
     DirectionValue,
 )
-from app.schemas.self_check import (
-    SelfCheckContext,
-    SelfCheckPayload,
-    SelfCheckResult,
-    SelfCheckTechnicalInfo,
-)
 from app.schemas.extraction import (
     ExtractedBrief,
     ExtractedFact,
@@ -53,7 +46,6 @@ from app.schemas.extraction import (
     ExtractorTechnicalInfo,
     FactStatus,
 )
-from app.schemas.knowledge import Document, DocumentMetadata, SearchResult
 from app.schemas.risk import (
     Risk,
     RiskSeverity,
@@ -70,7 +62,6 @@ __all__ = [
     "PipelineResults",
     "PipelineTechnicalState",
     "ResponseState",
-    "RetrievalState",
     "AssessmentEvidence",
     "AssessmentPayload",
     "AssessmentRecommendation",
@@ -93,10 +84,6 @@ __all__ = [
     "BriefAssessmentSummary",
     "BriefExtractedFields",
     "DirectionValue",
-    "SelfCheckContext",
-    "SelfCheckPayload",
-    "SelfCheckResult",
-    "SelfCheckTechnicalInfo",
     "CompletenessItem",
     "CompletenessLevel",
     "CompletenessResult",
@@ -107,9 +94,6 @@ __all__ = [
     "ExtractionResult",
     "ExtractorTechnicalInfo",
     "FactStatus",
-    "Document",
-    "DocumentMetadata",
-    "SearchResult",
     "Risk",
     "RiskSeverity",
     "TrafficLightMatch",

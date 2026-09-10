@@ -34,8 +34,8 @@ class BriefInputNormalizer:
 
     def normalize(self, text: str) -> str:
         """Проверяет и очищает текст брифа, возвращая нормализованную строку."""
-        if text is None or not text.strip():
-            raise BriefInputError("Brief text must not be empty")
+        if text is None:
+            raise BriefInputError("Brief text must not be None")
 
         normalized = text.replace("\r\n", "\n").replace("\r", "\n")
         normalized = normalized.replace("\x00", "")
@@ -67,9 +67,6 @@ class BriefInputNormalizer:
             lines.pop()
 
         result = "\n".join(lines)
-        if not result.strip():
-            raise BriefInputError("Brief text is empty after normalization")
-
         return result
 
 
@@ -125,7 +122,7 @@ class BriefInputFactory:
     @staticmethod
     def _ensure_text(text: str) -> str:
         """Выполняет шаг «ensure text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        if text is None or not text.strip():
-            raise BriefInputError("Brief text must not be empty")
+        if text is None:
+            raise BriefInputError("Brief text must not be None")
 
         return text

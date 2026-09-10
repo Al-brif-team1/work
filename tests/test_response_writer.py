@@ -251,6 +251,12 @@ def public_available_materials(context: AIContext) -> list[str]:
     return updated.final_response_payload["extracted_fields"]["available_materials"]
 
 
+def public_extracted_fields(context: AIContext) -> dict:
+    """Возвращает extracted_fields из public JSON payload."""
+    updated = ResponseWriterStage().run_context(context)
+    return updated.final_response_payload["extracted_fields"]
+
+
 def context_with_assessment_summary(
     *,
     status: DecisionStatus,
@@ -439,6 +445,60 @@ def make_mvp_planning_result() -> MVPPlanningResult:
     )
 
 
+def context_with_public_filter_inputs(
+    *,
+    matched_rule: str,
+    status: DecisionStatus = DecisionStatus.reject,
+) -> AIContext:
+    context = make_context(status)
+    assessment = context.assessment_result
+    arbitration = context.arbitration_result
+    assert assessment is not None
+    assert arbitration is not None
+
+    context = context.with_assessment_result(
+        assessment.model_copy(
+            update={
+                "risks": [
+                    Risk(
+                        type="production_criticality",
+                        description="Заказчик ожидает промышленной надёжности.",
+                        severity=RiskSeverity.critical,
+                    ),
+                    Risk(
+                        type="scope_too_large",
+                        description="Слишком широкий объём.",
+                        severity=RiskSeverity.high,
+                    ),
+                ],
+                "has_risks": True,
+                "traffic_light": TrafficLightResult(
+                    status=TrafficLightStatus.red,
+                    matches=[
+                        TrafficLightMatch(
+                            task="Большой информационный сайт",
+                            matched_rule="Слишком сложный сайт",
+                            status=TrafficLightStatus.red,
+                            source_quote="Большой информационный сайт",
+                            reason="Задача не входит в формат студенческого проекта.",
+                        )
+                    ],
+                ),
+            }
+        )
+    ).with_arbitration_result(
+        arbitration.model_copy(
+            update={
+                "final_status": status,
+                "metadata": {"matched_rule": matched_rule},
+            }
+        )
+    )
+    if status is DecisionStatus.simplify:
+        context = context.with_mvp_planning_result(make_mvp_planning_result())
+    return context
+
+
 class TestPublicJsonContract(unittest.TestCase):
     """Проверяет неизменный публичный JSON-контракт финального результата."""
 
@@ -526,6 +586,73 @@ class TestPublicJsonContract(unittest.TestCase):
         self.assertEqual(payload["assessment"]["risks"], [])
         self.assertEqual(payload["clarifying_questions"], [])
         self.assertEqual(payload["mvp_suggestion"], "")
+
+    def test_public_json_reject_by_traffic_light_red_filters_scope_risk(self) -> None:
+        context = context_with_public_filter_inputs(
+            matched_rule="reject_by_traffic_light_red"
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+        payload = updated.final_response_payload
+        assert payload is not None
+
+        internal_risks = updated.assessment_result.risks
+        self.assertIn("scope_too_large", [risk.type for risk in internal_risks])
+        self.assertEqual(payload["assessment"]["recommendation"], "reject")
+        self.assertNotIn("Слишком широкий объём.", payload["assessment"]["reasons"])
+        self.assertNotIn("Слишком широкий объём.", payload["assessment"]["risks"])
+
+    def test_public_json_simplify_keeps_scope_risk(self) -> None:
+        context = context_with_public_filter_inputs(
+            matched_rule="simplify_scope_too_large",
+            status=DecisionStatus.simplify,
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+        payload = updated.final_response_payload
+        assert payload is not None
+
+        self.assertEqual(payload["assessment"]["recommendation"], "simplify")
+        self.assertIn("Слишком широкий объём.", payload["assessment"]["reasons"])
+        self.assertIn("Слишком широкий объём.", payload["assessment"]["risks"])
+        self.assertNotIn(
+            "Заказчик ожидает промышленной надёжности.",
+            payload["assessment"]["risks"],
+        )
+
+    def test_public_json_reject_by_business_risk_keeps_only_reject_level_risks(
+        self,
+    ) -> None:
+        context = context_with_public_filter_inputs(
+            matched_rule="reject_by_business_risk"
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+        payload = updated.final_response_payload
+        assert payload is not None
+
+        self.assertIn(
+            "Заказчик ожидает промышленной надёжности.",
+            payload["assessment"]["reasons"],
+        )
+        self.assertIn(
+            "Заказчик ожидает промышленной надёжности.",
+            payload["assessment"]["risks"],
+        )
+        self.assertNotIn("Слишком широкий объём.", payload["assessment"]["reasons"])
+        self.assertNotIn("Слишком широкий объём.", payload["assessment"]["risks"])
+
+    def test_customer_response_draft_keeps_response_writer_behavior(self) -> None:
+        context = context_with_public_filter_inputs(
+            matched_rule="reject_by_traffic_light_red"
+        )
+
+        updated = ResponseWriterStage().run_context(context)
+        payload = updated.final_response_payload
+        assert payload is not None
+
+        self.assertIn("Слишком широкий объём.", updated.final_response_text)
+        self.assertIn("Слишком широкий объём.", payload["customer_response_draft"])
 
     def test_builder_uses_empty_customer_response_when_text_is_absent(self) -> None:
         payload = BriefAnalysisResultBuilder().build(make_context()).model_dump(
@@ -631,6 +758,7 @@ class TestResponseWriterStage(unittest.TestCase):
                                 task="Build dashboard with advanced filters",
                                 matched_rule="Advanced dashboard",
                                 status=TrafficLightStatus.yellow,
+                                source_quote="Build dashboard with advanced filters",
                                 reason=(
                                     "Students can do it if the first version "
                                     "has a bounded scope"
@@ -1036,6 +1164,71 @@ class TestResponseWriterStage(unittest.TestCase):
             updated.final_response_payload["extracted_fields"]["direction"],
             "unknown",
         )
+
+    def test_public_mapping_preserves_explicit_tasks_and_materials_without_negative_complexity(
+        self,
+    ) -> None:
+        context = make_context()
+        assert context.extracted_brief is not None
+        extracted = context.extracted_brief.model_copy(
+            update={
+                "project_goal": ExtractedFact(
+                    status=FactStatus.explicit,
+                    value="разработать большой информационный сайт",
+                ),
+                "tasks": [
+                    ExtractedFact(status=FactStatus.explicit, value=value)
+                    for value in [
+                        "разработать главную страницу",
+                        "каталог мероприятий",
+                        "страницы мероприятий",
+                        "каталог спикеров",
+                        "FAQ",
+                        "поиск",
+                        "фильтрацию",
+                    ]
+                ],
+                "materials": [
+                    ExtractedFact(status=FactStatus.explicit, value=value)
+                    for value in ["тексты", "фотографии", "фирменный стиль"]
+                ],
+                "constraints": [],
+                "integrations": [
+                    ExtractedFact(
+                        status=FactStatus.explicit,
+                        value="Внешние API и интеграции не требуются",
+                    )
+                ],
+                "other_facts": [
+                    ExtractedFact(
+                        status=FactStatus.explicit,
+                        value="Личные кабинеты и платежи не требуются",
+                    )
+                ],
+            }
+        )
+
+        fields = public_extracted_fields(context.with_extracted_brief(extracted))
+
+        self.assertTrue(fields["tasks"])
+        for expected_task in [
+            "разработать главную страницу",
+            "каталог мероприятий",
+            "страницы мероприятий",
+            "каталог спикеров",
+            "FAQ",
+            "поиск",
+            "фильтрацию",
+        ]:
+            self.assertIn(expected_task, fields["tasks"])
+        self.assertTrue(fields["available_materials"])
+        for expected_material in ["тексты", "фотографии", "фирменный стиль"]:
+            self.assertIn(expected_material, fields["available_materials"])
+        complexity_text = "\n".join(fields["complexity_factors"])
+        self.assertNotIn("API", complexity_text)
+        self.assertNotIn("интеграции не требуются", complexity_text)
+        self.assertNotIn("Личные кабинеты", complexity_text)
+        self.assertNotIn("платежи не требуются", complexity_text)
 
     def test_missing_public_string_fields_are_empty_strings(self) -> None:
         context = make_context()

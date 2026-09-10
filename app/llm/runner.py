@@ -5,13 +5,17 @@ from __future__ import annotations
 import logging
 import json
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from collections.abc import Mapping
 from typing import Any, Callable, Generic, Sequence, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.llm.client import LLMClient, Message
+from app.llm.client import (
+    LLMClient,
+    LLMProviderError,
+    LLMStructuredOutputError,
+    Message,
+)
 from app.tracing.tracing import NoOpTracingClient, TracingClient, get_tracing_client
 
 TPayload = TypeVar("TPayload", bound=BaseModel)
@@ -57,6 +61,8 @@ class LLMRunResult(BaseModel, Generic[TPayload]):
 class LLMRunnerError(RuntimeError):
     """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
+    attempts_executed: int | None = None
+
 
 class LLMRunnerTimeoutError(LLMRunnerError):
     """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
@@ -65,9 +71,41 @@ class LLMRunnerTimeoutError(LLMRunnerError):
 class LLMRunnerProviderError(LLMRunnerError):
     """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        error_code: str | None = None,
+        retryable: bool = True,
+        attempts_executed: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.error_code = error_code
+        self.retryable = retryable
+        self.attempts_executed = attempts_executed
+
 
 class LLMRunnerStructuredOutputError(LLMRunnerError):
     """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_kind: str = "validation_error",
+        provider_metadata: dict[str, Any] | None = None,
+        content_length: int | None = None,
+        retryable: bool = True,
+        attempts_executed: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_kind = error_kind
+        self.provider_metadata = provider_metadata or {}
+        self.content_length = content_length
+        self.retryable = retryable
+        self.attempts_executed = attempts_executed
 
 
 class LLMRunner:
@@ -118,6 +156,10 @@ class LLMRunner:
         last_error: Exception | None = None
         started_at = time.perf_counter()
         trace_id: str | None = None
+        request_kwargs_with_response_format = self._with_json_schema_response_format(
+            request_kwargs,
+            response_model,
+        )
 
         with self._tracing_client.create_trace(
             trace_name,
@@ -138,6 +180,14 @@ class LLMRunner:
                 )
 
             for attempt in range(1, self._max_retries + 1):
+                attempt_started_at = time.perf_counter()
+                self._log_attempt_start(
+                    trace_name=trace_name,
+                    attempt=attempt,
+                    messages=normalized_messages,
+                    response_model=response_model,
+                    request_kwargs=request_kwargs_with_response_format,
+                )
                 try:
                     with self._tracing_client.create_span(
                         span_name,
@@ -149,15 +199,15 @@ class LLMRunner:
                     ) as span:
                         raw_response = self._call_generate_json(
                             messages=normalized_messages,
-                            request_kwargs=self._with_json_schema_response_format(
-                                request_kwargs,
-                                response_model,
-                            ),
+                            request_kwargs=request_kwargs_with_response_format,
                         )
                         payload = self._validate_payload(
                             raw_response=raw_response,
                             response_model=response_model,
                             payload_validator=payload_validator,
+                        )
+                        attempt_latency_seconds = (
+                            time.perf_counter() - attempt_started_at
                         )
                         latency_seconds = time.perf_counter() - started_at
                         token_usage = self._build_token_usage(
@@ -187,6 +237,13 @@ class LLMRunner:
                             )
 
                         self._logger.info(
+                            "LLM attempt finished: trace_name=%s attempt=%s status=%s latency_seconds=%.3f",
+                            trace_name,
+                            attempt,
+                            "success",
+                            attempt_latency_seconds,
+                        )
+                        self._logger.info(
                             "%s succeeded on attempt %s",
                             trace_name,
                             attempt,
@@ -205,6 +262,24 @@ class LLMRunner:
                             recovered_errors=recovered_errors,
                         )
                 except LLMRunnerError as exc:
+                    exc.attempts_executed = attempt
+                    attempt_latency_seconds = time.perf_counter() - attempt_started_at
+                    status = (
+                        "timeout"
+                        if isinstance(exc, LLMRunnerTimeoutError)
+                        else (
+                            f"structured output error:{exc.error_kind}"
+                            if isinstance(exc, LLMRunnerStructuredOutputError)
+                            else "provider error"
+                        )
+                    )
+                    self._logger.warning(
+                        "LLM attempt finished: trace_name=%s attempt=%s status=%s latency_seconds=%.3f",
+                        trace_name,
+                        attempt,
+                        status,
+                        attempt_latency_seconds,
+                    )
                     last_error = exc
                     recovered_errors.append(str(exc))
                     self._logger.warning(
@@ -223,11 +298,48 @@ class LLMRunner:
                                     else "failed"
                                 ),
                                 "error": str(exc),
+                                "error_kind": getattr(exc, "error_kind", None),
+                                "provider_metadata": getattr(
+                                    exc,
+                                    "provider_metadata",
+                                    None,
+                                ),
                             }
                         )
+                    if not self._is_retryable_error(exc):
+                        if isinstance(exc, LLMRunnerProviderError):
+                            raise LLMRunnerProviderError(
+                                str(exc),
+                                status_code=exc.status_code,
+                                error_code=exc.error_code,
+                                retryable=exc.retryable,
+                                attempts_executed=attempt,
+                            ) from exc
+                        exc.attempts_executed = attempt
+                        raise
 
+        status_code = None
+        error_code = None
+        retryable = True
+        if isinstance(last_error, LLMRunnerProviderError):
+            status_code = last_error.status_code
+            error_code = last_error.error_code
+            retryable = last_error.retryable
+        if isinstance(last_error, LLMRunnerStructuredOutputError):
+            raise LLMRunnerStructuredOutputError(
+                f"LLM structured output failed after {self._max_retries} attempts: {last_error}",
+                error_kind=last_error.error_kind,
+                provider_metadata=last_error.provider_metadata,
+                content_length=last_error.content_length,
+                retryable=last_error.retryable,
+                attempts_executed=self._max_retries,
+            ) from last_error
         raise LLMRunnerProviderError(
-            f"LLM request failed after {self._max_retries} attempts"
+            f"LLM request failed after {self._max_retries} attempts",
+            status_code=status_code,
+            error_code=error_code,
+            retryable=retryable,
+            attempts_executed=self._max_retries,
         ) from last_error
 
     def run(
@@ -272,22 +384,31 @@ class LLMRunner:
             kwargs["timeout"] = self._timeout_seconds
 
         try:
-            if self._timeout_seconds is None:
-                return self._llm_client.generate_json(messages, **kwargs)
-
-            executor = ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(
-                self._llm_client.generate_json,
-                messages,
-                **kwargs,
-            )
-            try:
-                return future.result(timeout=self._timeout_seconds)
-            finally:
-                executor.shutdown(wait=future.done(), cancel_futures=not future.done())
-        except FutureTimeoutError as exc:
+            return self._llm_client.generate_json(messages, **kwargs)
+        except TimeoutError as exc:
             raise LLMRunnerTimeoutError(
                 f"LLM request timed out after {self._timeout_seconds} seconds"
+            ) from exc
+        except LLMProviderError as exc:
+            raise LLMRunnerProviderError(
+                f"LLM provider request failed: {exc}",
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                retryable=exc.retryable,
+            ) from exc
+        except LLMStructuredOutputError as exc:
+            self._logger.warning(
+                "LLM structured output parse failed: error_kind=%s content_length=%s provider_metadata=%r",
+                exc.error_kind,
+                exc.content_length,
+                exc.provider_metadata,
+            )
+            raise LLMRunnerStructuredOutputError(
+                str(exc),
+                error_kind=exc.error_kind,
+                provider_metadata=exc.provider_metadata,
+                content_length=exc.content_length,
+                retryable=exc.retryable,
             ) from exc
         except Exception as exc:
             if isinstance(exc, LLMRunnerError):
@@ -419,7 +540,17 @@ class LLMRunner:
             if payload_validator is not None:
                 payload_validator(payload)
             return payload
-        except (ValidationError, ValueError, TypeError, KeyError) as exc:
+        except ValidationError as exc:
+            logging.getLogger(__name__).exception(
+                "LLM structured output validation failed: response_model=%s errors=%s raw_response=%r",
+                response_model.__name__,
+                exc.errors(),
+                raw_response,
+            )
+            raise LLMRunnerStructuredOutputError(
+                f"LLM structured output validation failed: {exc}"
+            ) from exc
+        except (ValueError, TypeError, KeyError) as exc:
             raise LLMRunnerStructuredOutputError(
                 f"LLM structured output validation failed: {exc}"
             ) from exc
@@ -474,6 +605,42 @@ class LLMRunner:
             if value:
                 return str(value)
         return None
+
+    @staticmethod
+    def _is_retryable_error(exc: LLMRunnerError) -> bool:
+        if isinstance(exc, LLMRunnerTimeoutError):
+            return True
+        if isinstance(exc, LLMRunnerStructuredOutputError):
+            return exc.retryable
+        if isinstance(exc, LLMRunnerProviderError):
+            return exc.retryable
+        return True
+
+    def _log_attempt_start(
+        self,
+        *,
+        trace_name: str,
+        attempt: int,
+        messages: Sequence[Message],
+        response_model: type[BaseModel],
+        request_kwargs: dict[str, Any],
+    ) -> None:
+        message_lengths = [
+            len(message.get("content", ""))
+            for message in messages
+        ]
+        self._logger.info(
+            "LLM attempt starting: trace_name=%s attempt=%s model=%s timeout=%s response_model=%s message_count=%s message_lengths=%s total_message_length=%s response_format_present=%s",
+            trace_name,
+            attempt,
+            self._model_name,
+            self._timeout_seconds,
+            response_model.__name__,
+            len(messages),
+            message_lengths,
+            sum(message_lengths),
+            "response_format" in request_kwargs,
+        )
 
 
 def _estimate_text_tokens(text: str) -> int:

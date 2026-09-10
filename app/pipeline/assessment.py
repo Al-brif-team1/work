@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,7 +20,7 @@ from app.config import (
     get_criteria_config,
 )
 from app.llm.runner import LLMRunResult, LLMRunner
-from app.pipeline.base import BaseLLMStage
+from app.pipeline.base import BaseLLMStage, format_attempts
 from app.pipeline.result_builder import contains_signal, normalize_lookup_text
 from app.prompts import PromptManager, RenderedPrompt
 from app.schemas.ai_context import AIContext
@@ -33,7 +32,6 @@ from app.schemas.assessment import (
     AssessmentTechnicalInfo,
 )
 from app.schemas.evaluation import CriterionEvaluation, CriterionEvaluationStatus
-from app.schemas.knowledge import SearchResult
 from app.schemas.risk import Risk, RiskSeverity
 from app.schemas.traffic_light import (
     TrafficLightMatch,
@@ -54,18 +52,6 @@ class AssessmentConfigError(AssessmentError):
     """Специальная ошибка этого участка системы. Она помогает явно показать, на каком шаге конвейера что-то пошло не так."""
 
 
-class AssessmentRetriever(Protocol):
-    """Класс «AssessmentRetriever» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
-
-    def retrieve(
-        self,
-        query: str,
-        top_k: int | None = None,
-        metadata_filters: Mapping[str, object] | None = None,
-    ) -> list[SearchResult]:
-        """Выполняет шаг «retrieve». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-
-
 class AssessmentPreparedInput(BaseModel):
     """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
 
@@ -75,9 +61,6 @@ class AssessmentPreparedInput(BaseModel):
     criteria: list[Criterion]
     risk_types: list[RiskType]
     restricted_topics: list[RestrictedTopic] = Field(default_factory=list)
-    retrieved_context: list[SearchResult] = Field(default_factory=list)
-    retrieval_query: str | None = None
-    metadata_filters: dict[str, object] | None = None
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
@@ -107,9 +90,6 @@ class AssessmentPreparedInput(BaseModel):
             ),
             "criteria_config": self.criteria_config.model_dump(mode="json"),
             "traffic_light_config": self.traffic_light_config.model_dump(mode="json"),
-            "retrieved_context": [
-                item.model_dump(mode="json") for item in self.retrieved_context
-            ],
             "metadata": self.context.metadata,
         }
 
@@ -234,7 +214,6 @@ def build_restricted_topic_assessment(hit: RestrictedTopicHit) -> AssessmentResu
             attempts=0,
             prompt_name=None,
             trace_name="assessment.restricted_topic",
-            retriever_used=False,
         ),
     )
 
@@ -257,7 +236,6 @@ class AssessmentStage(
         max_retries: int = 2,
         model_name: str | None = None,
         llm_runner: LLMRunner | None = None,
-        retriever: AssessmentRetriever | None = None,
         criteria_config: CriteriaConfig | None = None,
         criteria_path: str | Path | None = None,
         traffic_light_config: TrafficLightConfig | None = None,
@@ -275,7 +253,6 @@ class AssessmentStage(
             llm_runner=llm_runner,
         )
         self._preparation = AssessmentPreparation(
-            retriever=retriever,
             criteria_config=criteria_config,
             criteria_path=criteria_path,
             traffic_light_config=traffic_light_config,
@@ -284,13 +261,11 @@ class AssessmentStage(
             self._preparation.criteria_config
         )
         self._last_run_metadata: dict[str, Any] = {}
+        self._last_context: AIContext | None = None
 
     def assess(
         self,
         context: AIContext,
-        *,
-        top_k: int | None = None,
-        metadata_filters: Mapping[str, object] | None = None,
     ) -> AIContext:
         """Выполняет шаг «assess». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         # Запрещенная тема - решение политики, а не оценка качества брифа, поэтому
@@ -303,11 +278,7 @@ class AssessmentStage(
                 build_restricted_topic_assessment(hit)
             )
 
-        prepared = self._preparation.prepare(
-            context,
-            top_k=top_k,
-            metadata_filters=metadata_filters,
-        )
+        prepared = self._preparation.prepare(context)
         return prepared.context.with_assessment_result(self.run(prepared))
 
     def run_context(self, context: AIContext) -> AIContext:
@@ -340,13 +311,12 @@ class AssessmentStage(
 
     def build_trace_input(self, stage_input: AssessmentPreparedInput) -> dict[str, Any]:
         """Выполняет шаг «build trace input». Документация описывает назначение метода, а сама логика остается в коде ниже."""
+        self._last_context = stage_input.context
         metadata = {
             "prompt_name": self.prompt_name,
             "prompt_version": self.prompt_version,
             "criteria_count": stage_input.criteria_count,
             "risk_types_count": stage_input.risk_types_count,
-            "retriever_used": self._preparation.retriever_used,
-            "retrieved_context_count": len(stage_input.retrieved_context),
             "is_complete": stage_input.context.completeness_result.is_complete,
             "completeness_level": stage_input.context.completeness_result.level.value,
         }
@@ -358,7 +328,9 @@ class AssessmentStage(
         result: LLMRunResult[AssessmentPayload],
     ) -> AssessmentResult:
         """Выполняет шаг «postprocess». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        payload = self._normalize_payload(result.payload)
+        if self._last_context is None:
+            raise AssessmentError("Assessment context is missing during postprocess")
+        payload = self._normalize_payload(result.payload, self._last_context)
         traffic_light = payload.traffic_light.model_copy(
             update={
                 "status": self._compute_traffic_light_status(
@@ -381,10 +353,6 @@ class AssessmentStage(
                 trace_enabled=result.trace_enabled,
                 trace_name=result.trace_name or self.trace_name,
                 model_name=result.model_name,
-                retriever_used=bool(self._last_run_metadata.get("retriever_used")),
-                retrieved_context_count=int(
-                    self._last_run_metadata.get("retrieved_context_count", 0)
-                ),
                 criteria_count=int(self._last_run_metadata.get("criteria_count", 0)),
                 risk_types_count=int(
                     self._last_run_metadata.get("risk_types_count", 0)
@@ -406,7 +374,7 @@ class AssessmentStage(
         last_error: Exception | None,
     ) -> Exception:
         """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
-        return AssessmentError(f"Unable to assess brief after {attempts} attempts")
+        return AssessmentError(f"Unable to assess brief after {format_attempts(attempts)}")
 
     def _render_assessment_prompt(
         self,
@@ -431,14 +399,12 @@ class AssessmentStage(
                 "traffic_light_config": stage_input.traffic_light_config.model_dump(
                     mode="json"
                 ),
-                "retrieved_context": [
-                    item.model_dump(mode="json")
-                    for item in stage_input.retrieved_context
-                ],
             }
         )
 
-    def _normalize_payload(self, payload: AssessmentPayload) -> AssessmentPayload:
+    def _normalize_payload(
+        self, payload: AssessmentPayload, context: AIContext
+    ) -> AssessmentPayload:
         """Приводит текст или данные к единому виду. Смысл не меняется: мы только убираем лишний шум, чтобы код дальше сравнивал значения надежнее."""
         return payload.model_copy(
             update={
@@ -454,7 +420,7 @@ class AssessmentStage(
                 ],
                 "summary": self._strip_optional_text(payload.summary),
                 "traffic_light": self._normalize_traffic_light(
-                    payload.traffic_light
+                    payload.traffic_light, context
                 ),
             }
         )
@@ -462,6 +428,7 @@ class AssessmentStage(
     def _normalize_traffic_light(
         self,
         traffic_light: TrafficLightResult,
+        context: AIContext,
     ) -> TrafficLightResult:
         """Normalize traffic-light matches against the configured rule source."""
         rule_index = self._build_traffic_light_rule_index()
@@ -471,7 +438,9 @@ class AssessmentStage(
 
         for match in traffic_light.matches:
             rule = rule_index.get(self._normalize_traffic_light_rule(match.matched_rule))
-            if rule is None:
+            if rule is None or not self._is_valid_traffic_light_source_quote(
+                match, context
+            ):
                 matches.append(
                     match.model_copy(update={"status": TrafficLightStatus.unknown})
                 )
@@ -494,11 +463,51 @@ class AssessmentStage(
             updates["specialization"] = next(iter(rule_specializations))
         return normalized.model_copy(update=updates)
 
+    def _is_valid_traffic_light_source_quote(
+        self,
+        match: TrafficLightMatch,
+        context: AIContext,
+    ) -> bool:
+        """Check that the match is anchored in explicit performer work."""
+        source_quote = self._normalize_traffic_light_rule(match.source_quote)
+        if not source_quote:
+            return False
+
+        normalized_brief = self._normalize_traffic_light_rule(context.normalized_text)
+        if source_quote not in normalized_brief:
+            return False
+
+        extracted = context.extracted_brief
+        if extracted is None:
+            return False
+
+        anchors: list[str] = []
+        work_facts = [
+            extracted.project_goal,
+            *extracted.tasks,
+            extracted.expected_result,
+        ]
+        for fact in work_facts:
+            if fact.status.value != "explicit":
+                continue
+            anchors.extend(fact.evidence)
+            if fact.value:
+                anchors.append(fact.value)
+
+        for anchor in anchors:
+            normalized_anchor = self._normalize_traffic_light_rule(anchor)
+            if not normalized_anchor:
+                continue
+            if source_quote in normalized_anchor or normalized_anchor in source_quote:
+                return True
+
+        return False
+
     def _build_traffic_light_rule_index(
         self,
     ) -> dict[str, tuple[str, str, TrafficLightStatus] | None]:
         """Build exact normalized rule lookup from traffic-light configuration."""
-        rules: dict[str, tuple[str, str, TrafficLightStatus] | None] = {}
+        rule_locations: dict[str, list[tuple[str, str, TrafficLightStatus]]] = {}
         config = self._preparation.traffic_light_config.traffic_light
         for direction in config.directions:
             for specialization in direction.specializations:
@@ -511,10 +520,13 @@ class AssessmentStage(
                             specialization.key,
                             status,
                         )
-                        if normalized_rule in rules:
-                            rules[normalized_rule] = None
-                            continue
-                        rules[normalized_rule] = rule_location
+                        rule_locations.setdefault(normalized_rule, []).append(
+                            rule_location
+                        )
+        rules: dict[str, tuple[str, str, TrafficLightStatus] | None] = {}
+        for normalized_rule, locations in rule_locations.items():
+            statuses = {status for _, _, status in locations}
+            rules[normalized_rule] = locations[0] if len(statuses) == 1 else None
         return rules
 
     @staticmethod
@@ -597,7 +609,6 @@ class AssessmentPreparation:
 
     def __init__(
         self,
-        retriever: AssessmentRetriever | None = None,
         criteria_config: CriteriaConfig | None = None,
         criteria_path: str | Path | None = None,
         traffic_light_config: TrafficLightConfig | None = None,
@@ -606,7 +617,6 @@ class AssessmentPreparation:
         if criteria_config is not None and criteria_path is not None:
             raise ValueError("Pass either criteria_config or criteria_path, not both")
 
-        self._retriever = retriever
         self._config = self._load_config(criteria_config, criteria_path)
         self._traffic_light_config = self._load_traffic_light_config(
             traffic_light_config
@@ -644,79 +654,21 @@ class AssessmentPreparation:
         """Return traffic-light configuration for prompt rendering."""
         return self._traffic_light_config
 
-    @property
-    def retriever_used(self) -> bool:
-        """Выполняет шаг «retriever used». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        return self._retriever is not None
-
     def prepare(
         self,
         context: AIContext,
-        *,
-        top_k: int | None = None,
-        metadata_filters: Mapping[str, object] | None = None,
     ) -> AssessmentPreparedInput:
         """Выполняет шаг «prepare». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         self._validate_context(context)
-        retrieval_query = self._build_retrieval_query(context)
-        retrieved_context = self._retrieve_context(
-            context=context,
-            retrieval_query=retrieval_query,
-            top_k=top_k,
-            metadata_filters=metadata_filters,
-        )
 
         return AssessmentPreparedInput(
-            context=context.with_retrieved_context(retrieved_context),
+            context=context,
             criteria_config=self._config,
             traffic_light_config=self._traffic_light_config,
             criteria=self._criteria,
             risk_types=self._risk_types,
             restricted_topics=self._restricted_topics,
-            retrieved_context=retrieved_context,
-            retrieval_query=retrieval_query,
-            metadata_filters=(
-                dict(metadata_filters) if metadata_filters is not None else None
-            ),
         )
-
-    def _retrieve_context(
-        self,
-        context: AIContext,
-        retrieval_query: str,
-        top_k: int | None,
-        metadata_filters: Mapping[str, object] | None,
-    ) -> list[SearchResult]:
-        """Выполняет шаг «retrieve context». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-        if self._retriever is None:
-            return list(context.retrieved_context)
-
-        return self._retriever.retrieve(
-            query=retrieval_query,
-            top_k=top_k,
-            metadata_filters=metadata_filters,
-        )
-
-    @staticmethod
-    def _build_retrieval_query(context: AIContext) -> str:
-        """Собирает вспомогательные данные для следующего шага. Такие методы не принимают решений сами, а готовят детали для основного процесса."""
-        parts: list[str] = [context.normalized_text]
-
-        if context.extracted_brief is not None:
-            extracted = context.extracted_brief
-            if extracted.project_goal.value:
-                parts.append(extracted.project_goal.value)
-            parts.extend(item.value for item in extracted.tasks if item.value)
-            parts.extend(item.value for item in extracted.technologies if item.value)
-            parts.extend(item.value for item in extracted.integrations if item.value)
-
-        if context.completeness_result is not None:
-            parts.extend(
-                item.field_key
-                for item in context.completeness_result.missing_information
-            )
-
-        return "\n".join(part.strip() for part in parts if part and part.strip())
 
     @staticmethod
     def _validate_context(context: AIContext) -> None:

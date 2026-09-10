@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import unittest
-from collections.abc import Mapping
 from typing import Any
 
 from pydantic import ValidationError
@@ -21,6 +20,7 @@ from app.pipeline import (
     AssessmentError,
     AssessmentPreparation,
     AssessmentStage,
+    DeterministicArbiterStage,
 )
 from app.pipeline.assessment import RestrictedTopicMatcher
 from app.schemas import (
@@ -34,42 +34,17 @@ from app.schemas import (
     CompletenessStatus,
     CriterionEvaluation,
     CriterionEvaluationStatus,
-    Document,
-    DocumentMetadata,
+    DecisionStatus,
     ExtractedBrief,
     ExtractedFact,
     FactStatus,
     Risk,
     RiskSeverity,
-    SearchResult,
     TrafficLightMatch,
     TrafficLightResult,
     TrafficLightStatus,
 )
 from app.tracing.tracing import NoOpTracingClient
-
-
-class FakeRetriever:
-    """Класс «FakeRetriever» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
-
-    def __init__(self, results: list[SearchResult]) -> None:
-        self.results = results
-        self.calls: list[dict[str, Any]] = []
-
-    def retrieve(
-        self,
-        query: str,
-        top_k: int | None = None,
-        metadata_filters: Mapping[str, object] | None = None,
-    ) -> list[SearchResult]:
-        self.calls.append(
-            {
-                "query": query,
-                "top_k": top_k,
-                "metadata_filters": dict(metadata_filters or {}),
-            }
-        )
-        return list(self.results)
 
 
 class FakeLLMRunner:
@@ -208,16 +183,45 @@ def make_context_without_tasks() -> AIContext:
     )
 
 
-def make_search_result() -> SearchResult:
-    """Выполняет шаг «make search result». Документация описывает назначение метода, а сама логика остается в коде ниже."""
-    return SearchResult(
-        document=Document(
-            id="kb-1",
-            text="Support channel integration guidance.",
-            metadata=DocumentMetadata(source="kb.md", category="assessment"),
-        ),
-        score=0.92,
-        rank=1,
+def make_context_for_traffic_light(
+    *,
+    brief_text: str,
+    project_goal: ExtractedFact | None = None,
+    tasks: list[ExtractedFact] | None = None,
+    expected_result: ExtractedFact | None = None,
+    technologies: list[ExtractedFact] | None = None,
+    materials: list[ExtractedFact] | None = None,
+    existing_resources: list[ExtractedFact] | None = None,
+    integrations: list[ExtractedFact] | None = None,
+) -> AIContext:
+    """Build context with explicit source anchors for traffic-light tests."""
+    extracted = make_extracted_brief().model_copy(
+        update={
+            "project_goal": project_goal
+            or ExtractedFact(
+                status=FactStatus.explicit,
+                value="проектная работа",
+                evidence=[],
+                confidence=0.9,
+            ),
+            "tasks": tasks or [],
+            "expected_result": expected_result
+            or ExtractedFact(
+                status=FactStatus.explicit,
+                value="готовый результат",
+                evidence=[],
+                confidence=0.9,
+            ),
+            "technologies": technologies or [],
+            "materials": materials or [],
+            "existing_resources": existing_resources or [],
+            "integrations": integrations or [],
+        }
+    )
+    return (
+        AIContext.from_brief(BriefInputFactory().from_text(brief_text))
+        .with_extracted_brief(extracted)
+        .with_completeness_result(make_completeness_result())
     )
 
 
@@ -314,12 +318,14 @@ def make_traffic_light_match(
     status: TrafficLightStatus,
     task: str,
     matched_rule: str | None = None,
+    source_quote: str = "Build a support bot",
 ) -> TrafficLightMatch:
     """Build a single traffic-light match for assessment tests."""
     return TrafficLightMatch(
         task=task,
         matched_rule=matched_rule or f"rule for {task}",
         status=status,
+        source_quote=source_quote,
         reason=f"{status.value} match",
     )
 
@@ -425,42 +431,13 @@ class TestAssessmentModels(unittest.TestCase):
 class TestAssessmentPreparation(unittest.TestCase):
     """Класс «TestAssessmentPreparation» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
-    def test_prepare_uses_retriever_and_criteria_configuration(self) -> None:
-        retriever = FakeRetriever([make_search_result()])
-        preparation = AssessmentPreparation(
-            retriever=retriever,
-            criteria_config=load_test_criteria_config(),
-        )
+    def test_prepare_uses_criteria_configuration(self) -> None:
+        preparation = AssessmentPreparation(criteria_config=load_test_criteria_config())
 
-        prepared = preparation.prepare(
-            make_context(),
-            top_k=3,
-            metadata_filters={"category": "assessment"},
-        )
+        prepared = preparation.prepare(make_context())
 
         self.assertEqual(prepared.criteria_count, 7)
         self.assertEqual(prepared.risk_types_count, 6)
-        self.assertEqual(prepared.retrieved_context[0].document.id, "kb-1")
-        self.assertEqual(prepared.context.retrieved_context[0].document.id, "kb-1")
-        self.assertIn("Build a support bot", retriever.calls[0]["query"])
-        self.assertIn("integrations", retriever.calls[0]["query"])
-        self.assertEqual(retriever.calls[0]["top_k"], 3)
-        self.assertEqual(
-            retriever.calls[0]["metadata_filters"],
-            {"category": "assessment"},
-        )
-
-    def test_prepare_reuses_existing_context_when_no_retriever_is_configured(
-        self,
-    ) -> None:
-        existing_result = make_search_result()
-        context = make_context().with_retrieved_context([existing_result])
-        preparation = AssessmentPreparation(criteria_config=load_test_criteria_config())
-
-        prepared = preparation.prepare(context)
-
-        self.assertEqual(prepared.retrieved_context, [existing_result])
-        self.assertEqual(prepared.context.retrieved_context, [existing_result])
 
     def test_prepare_requires_extraction_and_completeness_outputs(self) -> None:
         context = AIContext.from_brief(BriefInputFactory().from_text("Build a bot"))
@@ -535,20 +512,14 @@ class TestAssessmentStage(unittest.TestCase):
 
     def test_successful_assessment_uses_prompt_manager_and_llm_runner(self) -> None:
         runner = FakeLLMRunner(make_assessment_payload())
-        retriever = FakeRetriever([make_search_result()])
         stage = AssessmentStage(
             llm_runner=runner,
             tracing_client=NoOpTracingClient(),
-            retriever=retriever,
             criteria_config=load_test_criteria_config(),
         )
 
         result = stage.run(
-            stage._preparation.prepare(
-                make_context(),
-                top_k=2,
-                metadata_filters={"category": "assessment"},
-            )
+            stage._preparation.prepare(make_context())
         )
 
         self.assertEqual(result.risks[0].type, "placeholder_risk")
@@ -557,8 +528,6 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertEqual(result.summary, "Assessment identified one risk.")
         self.assertEqual(result.technical_info.criteria_count, 7)
         self.assertEqual(result.technical_info.risk_types_count, 6)
-        self.assertEqual(result.technical_info.retrieved_context_count, 1)
-        self.assertTrue(result.technical_info.retriever_used)
         self.assertEqual(runner.calls[0]["output_model"], AssessmentPayload)
         self.assertEqual(runner.calls[0]["trace_name"], "assessment.brief")
         self.assertEqual(runner.calls[0]["span_name"], "assessment.llm")
@@ -568,6 +537,62 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertIn("создание телеграм-бота", runner.calls[0]["prompt"])
         self.assertIn("assessment analyst", runner.calls[0]["system_prompt"])
         self.assertNotIn("Build a support bot", runner.calls[0]["system_prompt"])
+
+    def test_assessment_prompt_defines_mentor_expert_uncertainty_boundary(
+        self,
+    ) -> None:
+        stage = AssessmentStage(
+            llm_runner=FakeLLMRunner(make_assessment_payload()),
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        system_prompt = stage.build_system_prompt(
+            stage._preparation.prepare(make_context())
+        )
+
+        self.assertIsNotNone(system_prompt)
+        assert system_prompt is not None
+        self.assertIn(
+            "evidence of expert uncertainty, not merely evidence that expertise is required for implementation",
+            system_prompt,
+        )
+        self.assertIn(
+            "specialized domain, advanced technology, or technically difficult implementation is not evidence of expert uncertainty by itself",
+            system_prompt,
+        )
+        self.assertIn(
+            "If an expert is needed only to perform an already clear and assessable task, do not report mentor_expertise_required",
+            system_prompt,
+        )
+
+    def test_assessment_prompt_keeps_traffic_light_unknown_separate_from_mentor_risk(
+        self,
+    ) -> None:
+        stage = AssessmentStage(
+            llm_runner=FakeLLMRunner(make_assessment_payload()),
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        system_prompt = stage.build_system_prompt(
+            stage._preparation.prepare(make_context())
+        )
+
+        self.assertIsNotNone(system_prompt)
+        assert system_prompt is not None
+        self.assertIn(
+            "Do not create mentor_expertise_required merely because traffic_light is unknown",
+            system_prompt,
+        )
+        self.assertIn(
+            "Blocking insufficient or missing information should remain a clarification issue",
+            system_prompt,
+        )
+        self.assertIn(
+            "optional materials or project_goal does not by itself prevent mentor_expertise_required",
+            system_prompt,
+        )
 
     def test_traffic_light_prompt_uses_goal_and_expected_result_when_tasks_empty(
         self,
@@ -593,6 +618,30 @@ class TestAssessmentStage(unittest.TestCase):
             system_prompt,
         )
         self.assertIn("Do not decompose a goal into hidden subtasks.", system_prompt)
+
+    def test_assessment_prompt_requires_all_composite_traffic_light_components(
+        self,
+    ) -> None:
+        stage = AssessmentStage(
+            llm_runner=FakeLLMRunner(make_assessment_payload()),
+            tracing_client=NoOpTracingClient(),
+            criteria_config=load_test_criteria_config(),
+        )
+
+        system_prompt = stage.build_system_prompt(
+            stage._preparation.prepare(make_context())
+        )
+
+        self.assertIsNotNone(system_prompt)
+        assert system_prompt is not None
+        self.assertIn(
+            "For composite traffic-light rules, the source quote must support all essential conditions",
+            system_prompt,
+        )
+        self.assertIn(
+            "If only part of a composite rule is supported, return unknown",
+            system_prompt,
+        )
 
     def test_traffic_light_single_green_match_sets_overall_green(self) -> None:
         result = self._run_assessment_with_traffic_light(
@@ -697,13 +746,273 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertIsNone(result.traffic_light.direction)
         self.assertIsNone(result.traffic_light.specialization)
 
-    def test_traffic_light_duplicate_rule_text_becomes_unknown(self) -> None:
+    def test_traffic_light_power_bi_existing_report_does_not_create_red(
+        self,
+    ) -> None:
+        context = make_context_for_traffic_light(
+            brief_text=(
+                "У заказчика уже есть отчёты Power BI. "
+                "Нужно разработать веб-интерфейс."
+            ),
+            tasks=[
+                ExtractedFact(
+                    status=FactStatus.explicit,
+                    value="разработать веб-интерфейс",
+                    evidence=["Нужно разработать веб-интерфейс"],
+                    confidence=0.9,
+                )
+            ],
+            existing_resources=[
+                ExtractedFact(
+                    status=FactStatus.explicit,
+                    value="отчёты Power BI",
+                    evidence=["У заказчика уже есть отчёты Power BI"],
+                    confidence=0.9,
+                )
+            ],
+        )
+
         result = self._run_assessment_with_traffic_light_matches(
             [
                 make_traffic_light_match(
                     TrafficLightStatus.red,
-                    "private network",
+                    "отчёты Power BI",
+                    "Power BI",
+                    source_quote="У заказчика уже есть отчёты Power BI",
+                )
+            ],
+            context=context,
+        )
+
+        self.assertEqual(
+            result.traffic_light.matches[0].status,
+            TrafficLightStatus.unknown,
+        )
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.unknown)
+
+    def test_traffic_light_one_c_data_source_does_not_create_red(self) -> None:
+        context = make_context_for_traffic_light(
+            brief_text=(
+                "Данные экспортируются из 1С в Excel. "
+                "Нужно провести анализ продаж по готовому датасету."
+            ),
+            tasks=[
+                ExtractedFact(
+                    status=FactStatus.explicit,
+                    value="провести анализ продаж по готовому датасету",
+                    evidence=[
+                        "Нужно провести анализ продаж по готовому датасету"
+                    ],
+                    confidence=0.9,
+                )
+            ],
+            existing_resources=[
+                ExtractedFact(
+                    status=FactStatus.explicit,
+                    value="данные экспортируются из 1С в Excel",
+                    evidence=["Данные экспортируются из 1С в Excel"],
+                    confidence=0.9,
+                )
+            ],
+        )
+
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.red,
+                    "данные экспортируются из 1С",
+                    "1С",
+                    source_quote="Данные экспортируются из 1С в Excel",
+                )
+            ],
+            context=context,
+        )
+
+        self.assertEqual(
+            result.traffic_light.matches[0].status,
+            TrafficLightStatus.unknown,
+        )
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.unknown)
+
+    def test_traffic_light_existing_custdev_results_do_not_create_red(self) -> None:
+        context = make_context_for_traffic_light(
+            brief_text="Результаты CustDev уже есть. Нужно оформить user stories.",
+            tasks=[
+                ExtractedFact(
+                    status=FactStatus.explicit,
+                    value="оформить user stories",
+                    evidence=["Нужно оформить user stories"],
+                    confidence=0.9,
+                )
+            ],
+            materials=[
+                ExtractedFact(
+                    status=FactStatus.explicit,
+                    value="результаты CustDev",
+                    evidence=["Результаты CustDev уже есть"],
+                    confidence=0.9,
+                )
+            ],
+        )
+
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.red,
+                    "результаты CustDev",
+                    "CustDev",
+                    source_quote="Результаты CustDev уже есть",
+                )
+            ],
+            context=context,
+        )
+
+        self.assertEqual(
+            result.traffic_light.matches[0].status,
+            TrafficLightStatus.unknown,
+        )
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.unknown)
+
+    def test_traffic_light_explicit_power_bi_work_keeps_red(self) -> None:
+        context = make_context_for_traffic_light(
+            brief_text="Нужно разработать дашборд в Power BI для анализа продаж.",
+            tasks=[
+                ExtractedFact(
+                    status=FactStatus.explicit,
+                    value="разработать дашборд в Power BI для анализа продаж",
+                    evidence=[
+                        "Нужно разработать дашборд в Power BI для анализа продаж"
+                    ],
+                    confidence=0.9,
+                )
+            ],
+        )
+
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.red,
+                    "разработать дашборд в Power BI",
+                    "Power BI",
+                    source_quote=(
+                        "Нужно разработать дашборд в Power BI для анализа продаж"
+                    ),
+                )
+            ],
+            context=context,
+        )
+
+        self.assertEqual(result.traffic_light.matches[0].status, TrafficLightStatus.red)
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.red)
+
+    def test_traffic_light_explicit_vpn_work_keeps_red(self) -> None:
+        context = make_context_for_traffic_light(
+            brief_text="Нужно разработать VPN-приложение для Android.",
+            tasks=[
+                ExtractedFact(
+                    status=FactStatus.explicit,
+                    value="разработать VPN-приложение для Android",
+                    evidence=["Нужно разработать VPN-приложение для Android"],
+                    confidence=0.9,
+                )
+            ],
+        )
+
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.red,
+                    "разработать VPN-приложение",
                     "VPN",
+                    source_quote="Нужно разработать VPN-приложение для Android",
+                )
+            ],
+            context=context,
+        )
+
+        self.assertEqual(result.traffic_light.matches[0].status, TrafficLightStatus.red)
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.red)
+
+    def test_traffic_light_duplicate_red_rule_text_stays_red(self) -> None:
+        duplicate_red_rules = [
+            "VPN",
+            "с нуля не сможет разработать приложение",
+            "фоторедакторы",
+        ]
+
+        for rule in duplicate_red_rules:
+            with self.subTest(rule=rule):
+                result = self._run_assessment_with_traffic_light_matches(
+                    [
+                        make_traffic_light_match(
+                            TrafficLightStatus.green,
+                            "red duplicate task",
+                            rule,
+                        )
+                    ]
+                )
+
+                self.assertEqual(
+                    result.traffic_light.matches[0].status,
+                    TrafficLightStatus.red,
+                )
+                self.assertEqual(
+                    result.traffic_light.status,
+                    TrafficLightStatus.red,
+                )
+
+    def test_traffic_light_duplicate_green_rule_text_stays_green(self) -> None:
+        duplicate_green_rules = [
+            "калькулятор валют",
+            "Предобработка данных",
+            "Моделирование бизнес-процессов",
+        ]
+
+        for rule in duplicate_green_rules:
+            with self.subTest(rule=rule):
+                result = self._run_assessment_with_traffic_light_matches(
+                    [
+                        make_traffic_light_match(
+                            TrafficLightStatus.red,
+                            "green duplicate task",
+                            rule,
+                        )
+                    ]
+                )
+
+                self.assertEqual(
+                    result.traffic_light.matches[0].status,
+                    TrafficLightStatus.green,
+                )
+                self.assertEqual(
+                    result.traffic_light.status,
+                    TrafficLightStatus.green,
+                )
+
+    def test_traffic_light_duplicate_yellow_rule_text_stays_yellow(self) -> None:
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.red,
+                    "yellow duplicate task",
+                    "в таблице указаны лишь примеры проектов, на оценку можно приносить любой проект, необязательно из перечисленных примеров",
+                )
+            ]
+        )
+
+        self.assertEqual(
+            result.traffic_light.matches[0].status,
+            TrafficLightStatus.yellow,
+        )
+        self.assertEqual(result.traffic_light.status, TrafficLightStatus.yellow)
+
+    def test_traffic_light_conflicting_duplicate_rule_text_becomes_unknown(self) -> None:
+        result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.red,
+                    "automated ml pipelines",
+                    "выстраивания автоматизированных ML-пайплайнов",
                 )
             ]
         )
@@ -712,6 +1021,32 @@ class TestAssessmentStage(unittest.TestCase):
         self.assertEqual(result.traffic_light.status, TrafficLightStatus.unknown)
         self.assertIsNone(result.traffic_light.direction)
         self.assertIsNone(result.traffic_light.specialization)
+
+    def test_traffic_light_normalized_duplicate_red_reaches_arbiter_as_reject(
+        self,
+    ) -> None:
+        assessment_result = self._run_assessment_with_traffic_light_matches(
+            [
+                make_traffic_light_match(
+                    TrafficLightStatus.green,
+                    "private network",
+                    "VPN",
+                )
+            ]
+        )
+        arbiter = DeterministicArbiterStage(criteria_config=load_test_criteria_config())
+
+        arbitration = arbiter.arbitrate_assessment(
+            make_completeness_result(),
+            assessment_result,
+        )
+
+        self.assertEqual(assessment_result.traffic_light.status, TrafficLightStatus.red)
+        self.assertEqual(arbitration.final_status, DecisionStatus.reject)
+        self.assertEqual(
+            arbitration.triggered_rules[0].rule_key,
+            "reject_by_traffic_light_red",
+        )
 
     def test_traffic_light_overall_status_uses_normalized_match_colors(self) -> None:
         result = self._run_assessment_with_traffic_light_matches(
@@ -740,6 +1075,7 @@ class TestAssessmentStage(unittest.TestCase):
         *,
         llm_status: TrafficLightStatus,
         match_statuses: list[TrafficLightStatus],
+        context: AIContext | None = None,
     ) -> AssessmentResult:
         rules_by_status = {
             TrafficLightStatus.green: "создание телеграм-бота",
@@ -766,11 +1102,12 @@ class TestAssessmentStage(unittest.TestCase):
             criteria_config=load_test_criteria_config(),
         )
 
-        return stage.run(stage._preparation.prepare(make_context()))
+        return stage.run(stage._preparation.prepare(context or make_context()))
 
     def _run_assessment_with_traffic_light_matches(
         self,
         matches: list[TrafficLightMatch],
+        context: AIContext | None = None,
     ) -> AssessmentResult:
         stage = AssessmentStage(
             llm_runner=FakeLLMRunner(
@@ -783,7 +1120,7 @@ class TestAssessmentStage(unittest.TestCase):
             criteria_config=load_test_criteria_config(),
         )
 
-        return stage.run(stage._preparation.prepare(make_context()))
+        return stage.run(stage._preparation.prepare(context or make_context()))
 
     def test_assess_updates_ai_context_by_copy(self) -> None:
         runner = FakeLLMRunner(make_assessment_payload())
@@ -947,12 +1284,10 @@ class TestRestrictedTopics(unittest.TestCase):
 
         self.assertIsNone(hit)
 
-    def test_restricted_topic_short_circuits_llm_and_retriever(self) -> None:
+    def test_restricted_topic_short_circuits_llm(self) -> None:
         runner = FakeLLMRunner(AssertionError("LLM must not be called"))
-        retriever = FakeRetriever([make_search_result()])
         stage = AssessmentStage(
             llm_runner=runner,
-            retriever=retriever,
             tracing_client=NoOpTracingClient(),
             criteria_config=load_test_criteria_config(),
         )
@@ -962,7 +1297,6 @@ class TestRestrictedTopics(unittest.TestCase):
         )
 
         self.assertEqual(runner.calls, [])
-        self.assertEqual(retriever.calls, [])
         self.assertIsNotNone(updated.assessment_result)
 
     def test_short_circuit_result_carries_the_ground_for_the_manager(self) -> None:

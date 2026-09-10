@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "BriefAssessmentSummary": {
+      "additionalProperties": false,
+      "description": "[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера.",
+      "properties": {
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "recommendation": {
+          "enum": [
+            "accept",
+            "clarify",
+            "simplify",
+            "mentor_review",
+            "accept_with_clarifications",
+            "reject"
+          ],
+          "title": "Recommendation",
+          "type": "string"
+        },
+        "risks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Risks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "recommendation",
+        "confidence"
+      ],
+      "title": "BriefAssessmentSummary",
+      "type": "object"
+    },
+    "BriefExtractedFields": {
+      "additionalProperties": false,
+      "description": "[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера.",
+      "properties": {
+        "available_materials": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Available Materials",
+          "type": "array"
+        },
+        "complexity_factors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Complexity Factors",
+          "type": "array"
+        },
+        "direction": {
+          "enum": [
+            "development",
+            "design",
+            "analytics",
+            "marketing",
+            "ai",
+            "education",
+            "mixed",
+            "unknown"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "domain": {
+          "default": "",
+          "title": "Domain",
+          "type": "string"
+        },
+        "expected_result": {
+          "default": "",
+          "title": "Expected Result",
+          "type": "string"
+        },
+        "goal": {
+          "default": "",
+          "title": "Goal",
+          "type": "string"
+        },
+        "missing_information": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Information",
+          "type": "array"
+        },
+        "tasks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tasks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "direction"
+      ],
+      "title": "BriefExtractedFields",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера.",
+  "properties": {
+    "assessment": {
+      "$ref": "#/$defs/BriefAssessmentSummary"
+    },
+    "clarifying_questions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Clarifying Questions",
+      "type": "array"
+    },
+    "customer_response_draft": {
+      "title": "Customer Response Draft",
+      "type": "string"
+    },
+    "extracted_fields": {
+      "$ref": "#/$defs/BriefExtractedFields"
+    },
+    "mvp_suggestion": {
+      "default": "",
+      "title": "Mvp Suggestion",
+      "type": "string"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "summary",
+    "extracted_fields",
+    "assessment",
+    "customer_response_draft"
+  ],
+  "title": "BriefAnalysisResult",
+  "type": "object"
+}

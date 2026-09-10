@@ -28,9 +28,15 @@ class TestCriteriaConfig(unittest.TestCase):
             field.key: field.customer_field_role
             for field in config.evaluation.required_fields
         }
-        self.assertEqual(field_roles["project_goal"], "blocking")
+        required_flags = {
+            field.key: field.required
+            for field in config.evaluation.required_fields
+        }
+        self.assertEqual(field_roles["project_goal"], "optional")
+        self.assertFalse(required_flags["project_goal"])
         self.assertEqual(field_roles["project_direction"], "internal")
         self.assertEqual(field_roles["materials"], "optional")
+        self.assertEqual(field_roles["deadlines"], "internal")
 
     def test_eligibility_gate_is_configured(self) -> None:
         config = CriteriaLoader.load()
@@ -93,6 +99,29 @@ class TestCriteriaConfig(unittest.TestCase):
                 rule_keys.index("mentor_review_unknown_risk_type"),
                 rule_keys.index(lower_priority_rule),
             )
+
+    def test_mentor_expertise_required_definition_targets_expert_uncertainty(
+        self,
+    ) -> None:
+        config = CriteriaLoader.load()
+
+        risk_types = {
+            item.key: item for item in config.evaluation.risk_analysis.risk_types
+        }
+        mentor_risk = risk_types["mentor_expertise_required"]
+
+        self.assertEqual(mentor_risk.severity_hint, "medium")
+        self.assertIn("substantial expert uncertainty", mentor_risk.description)
+        self.assertIn("ordinary automatic project assessment", mentor_risk.description)
+        self.assertIn("feasibility_uncertainty", mentor_risk.signals)
+        self.assertIn("team_fit_uncertainty", mentor_risk.signals)
+        self.assertIn("methodological_uncertainty", mentor_risk.signals)
+        self.assertIn(
+            "feasibility cannot be judged without a domain specialist",
+            mentor_risk.evidence_hints,
+        )
+        self.assertNotIn("complex_domain", mentor_risk.signals)
+        self.assertNotIn("specialized_expertise", mentor_risk.signals)
 
     def test_restricted_topics_are_configured(self) -> None:
         config = CriteriaLoader.load()

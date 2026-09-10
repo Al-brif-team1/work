@@ -16,12 +16,14 @@ from app.input import BriefInputFactory
 from app.llm.client import LLMClient
 from app.llm.runner import LLMRunner
 from app.pipeline.arbiter import DeterministicArbiterStage
-from app.pipeline.assessment import AssessmentRetriever, AssessmentStage
+from app.pipeline.assessment import AssessmentStage
 from app.pipeline.completeness import CompletenessCheckStage
+from app.pipeline.empty_brief import EmptyBriefRejectionStage
 from app.pipeline.extractor import Extractor
 from app.pipeline.mvp_planner import MVPPlannerStage
 from app.pipeline.question_generator import TemplateQuestionGeneratorStage
 from app.pipeline.response_writer import ResponseWriterStage
+from app.pipeline.security import SecurityGateStage
 from app.prompts import PromptManager
 from app.schemas import AIContext, BriefAnalysisResult, BriefInput
 from app.tracing.tracing import TracingClient, get_tracing_client
@@ -58,7 +60,6 @@ class BriefAnalysisPipeline:
         cls,
         llm_client: LLMClient,
         *,
-        retriever: AssessmentRetriever | None = None,
         criteria_config: CriteriaConfig | None = None,
         traffic_light_config: TrafficLightConfig | None = None,
         tracing_client: TracingClient | None = None,
@@ -90,6 +91,8 @@ class BriefAnalysisPipeline:
         )
         return cls(
             stages=[
+                EmptyBriefRejectionStage(tracing_client=tracing),
+                SecurityGateStage(tracing_client=tracing),
                 Extractor(
                     llm_runner=llm_runner,
                     tracing_client=tracing,
@@ -107,7 +110,6 @@ class BriefAnalysisPipeline:
                     prompt_manager=prompts,
                     max_retries=max_retries,
                     model_name=model_name,
-                    retriever=retriever,
                     criteria_config=config,
                     traffic_light_config=traffic_light,
                 ),
@@ -160,4 +162,8 @@ class BriefAnalysisPipeline:
         )
         for stage in self._stages:
             context = stage.run_context(context)
+            if context.stage_metadata.get(stage.__class__.__name__, {}).get(
+                "short_circuit_pipeline"
+            ):
+                break
         return context

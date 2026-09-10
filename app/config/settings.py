@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
-from pydantic import Field, ValidationError, field_validator, model_validator
+from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,11 +27,6 @@ class Settings(BaseSettings):
         "INFO",
         alias="LOG_LEVEL",
     )
-    knowledge_directory: Path = Field(Path("knowledge"), alias="KNOWLEDGE_DIR")
-    knowledge_chunk_size: int = Field(1000, alias="KNOWLEDGE_CHUNK_SIZE")
-    knowledge_chunk_overlap: int = Field(200, alias="KNOWLEDGE_CHUNK_OVERLAP")
-    knowledge_top_k: int = Field(5, alias="KNOWLEDGE_TOP_K")
-
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         extra="ignore",
@@ -39,9 +34,6 @@ class Settings(BaseSettings):
     )
 
     @field_validator(
-        "knowledge_chunk_size",
-        "knowledge_chunk_overlap",
-        "knowledge_top_k",
         "llm_max_attempts",
         "llm_timeout_seconds",
     )
@@ -98,15 +90,6 @@ class Settings(BaseSettings):
             raise ValueError("must start with http:// or https://")
 
         return normalized.rstrip("/")
-
-    @model_validator(mode="after")
-    def _validate_chunk_relationship(self) -> "Settings":
-        """Проверяет данные до дальнейшей обработки. Это нужно, чтобы ошибка проявилась рано и не испортила результат следующих роботов."""
-        if self.knowledge_chunk_overlap >= self.knowledge_chunk_size:
-            raise ValueError("knowledge_chunk_overlap must be smaller than knowledge_chunk_size")
-
-        return self
-
 
 class Config:
     """Класс «Config» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""

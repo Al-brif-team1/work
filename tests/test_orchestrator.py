@@ -14,11 +14,11 @@ from app.pipeline import (
     BriefAnalysisPipeline,
     CompletenessCheckStage,
     DeterministicArbiterStage,
+    EmptyBriefRejectionStage,
     Extractor,
-    LLMSelfChecker,
     MVPPlannerStage,
     ResponseWriterStage,
-    SelfChecker,
+    SecurityGateStage,
     TemplateQuestionGeneratorStage,
 )
 from app.schemas import (
@@ -156,7 +156,9 @@ def _minimal_extraction_payload() -> dict[str, Any]:
         "project_goal": {
             "status": "explicit",
             "value": "Сделать небольшой портал для приёма обращений клиентов.",
-            "evidence": ["Нужен портал для приёма обращений."],
+            "evidence": [
+                "Нужен небольшой веб-портал для приёма обращений клиентов."
+            ],
             "confidence": 0.95,
         },
         "tasks": [
@@ -258,6 +260,7 @@ def _ready_assessment_payload() -> dict[str, Any]:
                     task="Небольшой веб-портал для приёма обращений клиентов.",
                     matched_rule="многостраничные сайты, лендинги",
                     status=TrafficLightStatus.green,
+                    source_quote="Небольшой веб-портал для приёма обращений клиентов.",
                     reason="Портал соответствует green-правилу веб/фронтенд-разработки.",
                 )
             ],
@@ -317,6 +320,8 @@ class TestBriefAnalysisPipeline(unittest.TestCase):
         pipeline = _build_factory_pipeline(FakeProductionLLMClient([]))
 
         expected_stage_types = (
+            EmptyBriefRejectionStage,
+            SecurityGateStage,
             Extractor,
             CompletenessCheckStage,
             AssessmentStage,
@@ -327,12 +332,6 @@ class TestBriefAnalysisPipeline(unittest.TestCase):
         )
         # This is a white-box architecture contract: factory order is part of the migration safety net.
         self.assertEqual(tuple(type(stage) for stage in pipeline._stages), expected_stage_types)
-
-        legacy_stage_types = (
-            SelfChecker,
-            LLMSelfChecker,
-        )
-        self.assertFalse(any(isinstance(stage, legacy_stage_types) for stage in pipeline._stages))
 
     def test_insert_stage_after_adds_stage_after_first_matching_type(self) -> None:
         inserted = ArbiterStageStub()

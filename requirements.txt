@@ -1,6 +1,6 @@
 langfuse
-chromadb
 openai
+PyYAML
 python-dotenv
 pydantic-settings
 python-docx

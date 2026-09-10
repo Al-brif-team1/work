@@ -5,7 +5,6 @@ from app.pipeline.assessment import (
     AssessmentError,
     AssessmentPreparation,
     AssessmentPreparedInput,
-    AssessmentRetriever,
     AssessmentStage,
 )
 from app.pipeline.base import BaseLLMStage, LLMStageRunResult
@@ -23,20 +22,25 @@ from app.pipeline.question_generator import (
 from app.pipeline.mvp_planner import MVPPlannerError, MVPPlannerStage
 from app.pipeline.orchestrator import BriefAnalysisPipeline, BriefAnalysisPipelineError
 from app.pipeline.response_writer import ResponseWriterError, ResponseWriterStage
+from app.pipeline.security import (
+    PROMPT_INJECTION_REASON_CODE,
+    PROMPT_INJECTION_RULE_KEY,
+    SecurityGateStage,
+)
 from app.pipeline.result_builder import (
     BriefAnalysisResultBuilder,
     BriefAnalysisResultError,
-)
-from app.pipeline.self_check import (
-    DeterministicValidator,
-    LLMSelfChecker,
-    SelfCheckError,
-    SelfChecker,
 )
 from app.pipeline.completeness import (
     CompletenessCheckStage,
     CompletenessConfigError,
     CompletenessError,
+)
+from app.pipeline.empty_brief import (
+    EMPTY_OR_NONSENSE_BRIEF_REASON_CODE,
+    EMPTY_OR_NONSENSE_BRIEF_RULE_KEY,
+    EmptyBriefRejectionStage,
+    is_empty_or_obvious_nonsense,
 )
 from app.pipeline.extractor import Extractor, ExtractorError
 
@@ -45,7 +49,6 @@ __all__ = [
     "AssessmentError",
     "AssessmentPreparation",
     "AssessmentPreparedInput",
-    "AssessmentRetriever",
     "AssessmentStage",
     "BaseLLMStage",
     "BaseStage",
@@ -55,6 +58,10 @@ __all__ = [
     "CompletenessCheckStage",
     "CompletenessConfigError",
     "CompletenessError",
+    "EMPTY_OR_NONSENSE_BRIEF_REASON_CODE",
+    "EMPTY_OR_NONSENSE_BRIEF_RULE_KEY",
+    "EmptyBriefRejectionStage",
+    "is_empty_or_obvious_nonsense",
     "ArbitrationConfigError",
     "ArbitrationError",
     "DeterministicArbiterStage",
@@ -69,10 +76,9 @@ __all__ = [
     "BriefAnalysisResultError",
     "ResponseWriterError",
     "ResponseWriterStage",
-    "DeterministicValidator",
-    "LLMSelfChecker",
-    "SelfCheckError",
-    "SelfChecker",
+    "PROMPT_INJECTION_REASON_CODE",
+    "PROMPT_INJECTION_RULE_KEY",
+    "SecurityGateStage",
     "Extractor",
     "ExtractorError",
 ]

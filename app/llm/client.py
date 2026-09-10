@@ -5,6 +5,42 @@ from typing import Any
 Message = Mapping[str, str]
 
 
+class LLMProviderError(RuntimeError):
+    """Normalized provider failure that lets the runner make retry decisions."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        error_code: str | None = None,
+        retryable: bool = True,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.error_code = error_code
+        self.retryable = retryable
+
+
+class LLMStructuredOutputError(RuntimeError):
+    """Normalized failure for model responses that are not usable structured output."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_kind: str,
+        provider_metadata: dict[str, Any] | None = None,
+        content_length: int | None = None,
+        retryable: bool = True,
+    ) -> None:
+        super().__init__(message)
+        self.error_kind = error_kind
+        self.provider_metadata = provider_metadata or {}
+        self.content_length = content_length
+        self.retryable = retryable
+
+
 class LLMClient(ABC):
     """Класс «LLMClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
