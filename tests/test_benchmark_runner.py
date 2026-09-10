@@ -14,14 +14,51 @@ from benchmark.runner import (
 )
 
 
-class FakeAssessment:
-    def __init__(self, recommendation: str) -> None:
-        self.recommendation = recommendation
+class FakeTokenUsage:
+    def __init__(self, total: int | None) -> None:
+        self.total_tokens = total
+        self.total_tokens_estimate = None
 
 
-class FakeResult:
+class FakeTechnicalInfo:
+    def __init__(self, tokens: int | None, latency: float, attempts: int) -> None:
+        self.token_usage = FakeTokenUsage(tokens) if tokens is not None else None
+        self.latency_seconds = latency
+        self.attempts = attempts
+
+
+class FakeStageResult:
+    def __init__(self, tokens: int | None, latency: float, attempts: int) -> None:
+        self.technical_info = FakeTechnicalInfo(tokens, latency, attempts)
+
+
+class FakeContext:
     def __init__(self, recommendation: str) -> None:
-        self.assessment = FakeAssessment(recommendation)
+        self.extraction_result = FakeStageResult(100, 1.5, 1)
+        self.assessment_result = FakeStageResult(200, 2.5, 1)
+        self.mvp_planning_result = None
+        self.final_response_payload = {
+            "summary": "",
+            "extracted_fields": {
+                "goal": "",
+                "expected_result": "",
+                "tasks": [],
+                "domain": "",
+                "direction": "development",
+                "available_materials": [],
+                "missing_information": [],
+                "complexity_factors": [],
+            },
+            "assessment": {
+                "recommendation": recommendation,
+                "confidence": "high",
+                "reasons": [],
+                "risks": [],
+            },
+            "clarifying_questions": [],
+            "mvp_suggestion": "",
+            "customer_response_draft": "",
+        }
 
 
 class FakePipeline:
@@ -29,14 +66,14 @@ class FakePipeline:
         self._responses = list(responses)
         self.briefs: list[str] = []
 
-    def analyze_text(self, text: str) -> FakeResult:
+    def analyze_text_context(self, text: str) -> FakeContext:
         self.briefs.append(text)
         if not self._responses:
             raise AssertionError("Unexpected benchmark pipeline call")
         response = self._responses.pop(0)
         if isinstance(response, Exception):
             raise response
-        return FakeResult(response)
+        return FakeContext(response)
 
 
 class TestBenchmarkRunner(unittest.TestCase):
@@ -87,9 +124,60 @@ class TestBenchmarkRunner(unittest.TestCase):
                         "correct": "true",
                         "error": "",
                         "error_type": "",
+                        "tokens_extractor": "100",
+                        "tokens_assessment": "200",
+                        "tokens_mvp": "",
+                        "tokens_total": "300",
+                        "latency_total": "4.000",
+                        "attempts_total": "2",
+                        "llm_calls": "2",
                     }
                 ],
             )
+
+    def test_llm_stats_are_collected_per_stage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "benchmark.csv"
+            output_path = Path(tmpdir) / "predictions.csv"
+            self._write_input(
+                input_path,
+                [{"id": "1", "brief": "Нужен сайт.", "gold_class": "ACCEPT"}],
+                fieldnames=("id", "brief", "gold_class"),
+            )
+
+            run_benchmark(
+                input_csv=input_path,
+                output_csv=output_path,
+                pipeline=FakePipeline(["accept"]),
+            )
+
+            row = self._read_output(output_path)[0]
+            self.assertEqual(row["tokens_extractor"], "100")
+            self.assertEqual(row["tokens_assessment"], "200")
+            self.assertEqual(row["tokens_mvp"], "")
+            self.assertEqual(row["tokens_total"], "300")
+            self.assertEqual(row["llm_calls"], "2")
+
+    def test_failed_row_has_empty_llm_stats(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "benchmark.csv"
+            output_path = Path(tmpdir) / "predictions.csv"
+            self._write_input(
+                input_path,
+                [{"id": "1", "brief": "Нужен сайт.", "gold_class": "ACCEPT"}],
+                fieldnames=("id", "brief", "gold_class"),
+            )
+
+            run_benchmark(
+                input_csv=input_path,
+                output_csv=output_path,
+                pipeline=FakePipeline([RuntimeError("provider failed")]),
+            )
+
+            row = self._read_output(output_path)[0]
+            self.assertEqual(row["tokens_total"], "")
+            self.assertEqual(row["llm_calls"], "0")
+            self.assertEqual(row["error_type"], "RuntimeError")
 
     def test_row_error_is_recorded_and_next_row_continues(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

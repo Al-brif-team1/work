@@ -139,6 +139,10 @@ class BriefAnalysisPipeline:
         """Выполняет шаг «analyze text». Документация описывает назначение метода, а сама логика остается в коде ниже."""
         return self.analyze(self._input_factory.from_text(text))
 
+    def analyze_text_context(self, text: str) -> AIContext:
+        """Прогоняет текст брифа через конвейер и возвращает полный контекст."""
+        return self.run_context(self._input_factory.from_text(text))    
+
     def insert_stage_after(self, stage_type: type[Any], stage: ContextStage) -> bool:
         """Insert a stage after the first existing stage of the requested type."""
         for index, existing_stage in enumerate(self._stages):

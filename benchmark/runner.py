@@ -6,16 +6,30 @@ import argparse
 import csv
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, Sequence
+from typing import Any, Protocol, Sequence
 
 from app.config import Config
 from app.llm.factory import LLMClientFactory
-from app.pipeline import BriefAnalysisPipeline
+from app.pipeline import BriefAnalysisPipeline, BriefAnalysisPipelineError
 from app.schemas import BriefAnalysisResult, DecisionStatus
 
 
 REQUIRED_COLUMNS = frozenset({"id", "brief", "gold_class"})
-OUTPUT_COLUMNS = ("id", "gold_class", "predicted_class", "correct", "error", "error_type")
+OUTPUT_COLUMNS = (
+    "id",
+    "gold_class",
+    "predicted_class",
+    "correct",
+    "error",
+    "error_type",
+    "tokens_extractor",
+    "tokens_assessment",
+    "tokens_mvp",
+    "tokens_total",
+    "latency_total",
+    "attempts_total",
+    "llm_calls",
+)
 SKIPPED_EMPTY_GOLD_CLASS = "skipped_empty_gold_class"
 PUBLIC_RECOMMENDATIONS = frozenset(
     {
@@ -41,9 +55,22 @@ class BenchmarkRunStats:
     errors: int
 
 
+@dataclass(frozen=True)
+class BriefLLMStats:
+    """Technical statistics collected from one brief run."""
+
+    tokens_extractor: int | None = None
+    tokens_assessment: int | None = None
+    tokens_mvp: int | None = None
+    tokens_total: int | None = None
+    latency_total: float | None = None
+    attempts_total: int = 0
+    llm_calls: int = 0
+
+
 class BriefPipeline(Protocol):
-    def analyze_text(self, text: str) -> BriefAnalysisResult:
-        """Analyze one normalized text brief and return the public result."""
+    def analyze_text_context(self, text: str) -> Any:
+        """Analyze one text brief and return the full pipeline context."""
 
 
 def build_production_pipeline() -> BriefAnalysisPipeline:
@@ -145,6 +172,7 @@ def _run_row(
                 "correct": "",
                 "error": SKIPPED_EMPTY_GOLD_CLASS,
                 "error_type": "",
+                **_format_llm_stats(BriefLLMStats()),
             },
             False,
             True,
@@ -152,12 +180,17 @@ def _run_row(
         )
 
     try:
-        result = pipeline.analyze_text(brief)
+        context = pipeline.analyze_text_context(brief)
+        if context.final_response_payload is None:
+            raise BriefAnalysisPipelineError("Pipeline did not produce final payload")
+        result = BriefAnalysisResult.model_validate(context.final_response_payload)
         predicted_class = result.assessment.recommendation
+        stats = _collect_llm_stats(context)
         error = ""
         error_type = ""
     except Exception as exc:
         predicted_class = ""
+        stats = BriefLLMStats()
         error = f"{exc.__class__.__name__}: {exc}"
         error_type = exc.__class__.__name__
 
@@ -169,11 +202,77 @@ def _run_row(
             "correct": _format_correct(gold_class, predicted_class),
             "error": error,
             "error_type": error_type,
+            **_format_llm_stats(stats),
         },
         True,
         False,
         bool(error),
     )
+
+
+def _stage_tokens(technical_info: Any) -> int | None:
+    """Return total tokens for one stage, falling back to the estimate."""
+    usage = getattr(technical_info, "token_usage", None)
+    if usage is None:
+        return None
+    return usage.total_tokens or usage.total_tokens_estimate
+
+
+def _collect_llm_stats(context: Any) -> BriefLLMStats:
+    """Aggregate token usage and latency across all LLM stages of one brief."""
+    stages = [
+        context.extraction_result,
+        context.assessment_result,
+        context.mvp_planning_result,
+    ]
+    tokens: list[int | None] = []
+    latency = 0.0
+    attempts = 0
+    calls = 0
+
+    for stage in stages:
+        info = getattr(stage, "technical_info", None) if stage is not None else None
+        if info is None:
+            tokens.append(None)
+            continue
+        stage_tokens = _stage_tokens(info)
+        tokens.append(stage_tokens)
+        latency += getattr(info, "latency_seconds", None) or 0.0
+        attempts += getattr(info, "attempts", 0) or 0
+        if stage_tokens is not None:
+            calls += 1
+
+    known = [value for value in tokens if value is not None]
+    return BriefLLMStats(
+        tokens_extractor=tokens[0],
+        tokens_assessment=tokens[1],
+        tokens_mvp=tokens[2],
+        tokens_total=sum(known) if known else None,
+        latency_total=latency or None,
+        attempts_total=attempts,
+        llm_calls=calls,
+    )
+
+
+def _format_llm_stats(stats: BriefLLMStats) -> dict[str, str]:
+    """Render technical statistics as CSV-safe strings."""
+
+    def _num(value: int | float | None) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, float):
+            return f"{value:.3f}"
+        return str(value)
+
+    return {
+        "tokens_extractor": _num(stats.tokens_extractor),
+        "tokens_assessment": _num(stats.tokens_assessment),
+        "tokens_mvp": _num(stats.tokens_mvp),
+        "tokens_total": _num(stats.tokens_total),
+        "latency_total": _num(stats.latency_total),
+        "attempts_total": _num(stats.attempts_total),
+        "llm_calls": _num(stats.llm_calls),
+    }
 
 
 def _format_correct(gold_class: str, predicted_class: str) -> str:
