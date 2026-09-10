@@ -86,6 +86,7 @@ class TestBenchmarkRunner(unittest.TestCase):
                         "predicted_class": "accept",
                         "correct": "true",
                         "error": "",
+                        "error_type": "",
                     }
                 ],
             )

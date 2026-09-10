@@ -386,6 +386,8 @@ class MVPPlannerStage(BaseLLMStage):
                 skipped_reason=None,
                 raw_response=run_result.raw_response,
                 recovered_errors=run_result.recovered_errors,
+                latency_seconds=run_result.latency_seconds,
+                token_usage=run_result.token_usage,
             ),
         )
 

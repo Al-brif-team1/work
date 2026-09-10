@@ -172,6 +172,56 @@ class TestBenchmarkMetrics(unittest.TestCase):
             self.assertIn("REJECT -> CLARIFY: 1", report)
             self.assertIn("MENTOR_REVIEW", report)
 
+    def test_schema_validation_error_lowers_schema_valid_rate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "predictions.csv"
+            self._write_results(
+                path,
+                [
+                    self._row("1", "ACCEPT", "accept", "true"),
+                    self._row("2", "REJECT", "", "false", "ValidationError: bad payload", "ValidationError"),
+                ],
+            )
+
+            metrics = compute_metrics(path)
+
+            self.assertEqual(metrics.schema_invalid, 1)
+            self.assertEqual(metrics.schema_valid_rate, 0.5)
+            self.assertEqual(metrics.pipeline_success_rate, 0.5)
+
+    def test_non_schema_error_keeps_schema_valid_rate_at_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "predictions.csv"
+            self._write_results(
+                path,
+                [
+                    self._row("1", "ACCEPT", "accept", "true"),
+                    self._row("2", "REJECT", "", "false", "RuntimeError: timeout", "RuntimeError"),
+                ],
+            )
+
+            metrics = compute_metrics(path)
+
+            self.assertEqual(metrics.schema_invalid, 0)
+            self.assertEqual(metrics.schema_valid_rate, 1.0)
+            self.assertEqual(metrics.pipeline_success_rate, 0.5)
+
+    def test_skipped_rows_do_not_affect_rates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "predictions.csv"
+            self._write_results(
+                path,
+                [
+                    self._row("1", "", "", "", SKIPPED_EMPTY_GOLD_CLASS),
+                    self._row("2", "ACCEPT", "accept", "true"),
+                ],
+            )
+
+            metrics = compute_metrics(path)
+
+            self.assertEqual(metrics.schema_valid_rate, 1.0)
+            self.assertEqual(metrics.pipeline_success_rate, 1.0)
+
     @staticmethod
     def _row(
         case_id: str,
@@ -179,6 +229,7 @@ class TestBenchmarkMetrics(unittest.TestCase):
         predicted_class: str,
         correct: str,
         error: str = "",
+        error_type: str = "",
     ) -> dict[str, str]:
         return {
             "id": case_id,
@@ -186,6 +237,7 @@ class TestBenchmarkMetrics(unittest.TestCase):
             "predicted_class": predicted_class,
             "correct": correct,
             "error": error,
+            "error_type": error_type,
         }
 
     @staticmethod
@@ -193,7 +245,7 @@ class TestBenchmarkMetrics(unittest.TestCase):
         with path.open("w", encoding="utf-8", newline="") as file:
             writer = csv.DictWriter(
                 file,
-                fieldnames=("id", "gold_class", "predicted_class", "correct", "error"),
+                fieldnames=("id", "gold_class", "predicted_class", "correct", "error", "error_type"),
             )
             writer.writeheader()
             writer.writerows(rows)

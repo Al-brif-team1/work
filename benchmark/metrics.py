@@ -13,7 +13,7 @@ from benchmark.runner import PUBLIC_RECOMMENDATIONS, SKIPPED_EMPTY_GOLD_CLASS
 
 
 REQUIRED_COLUMNS = frozenset(
-    {"id", "gold_class", "predicted_class", "correct", "error"}
+    {"id", "gold_class", "predicted_class", "correct", "error", "error_type"}
 )
 CLASS_ORDER = (
     "accept",
@@ -57,6 +57,9 @@ class BenchmarkMetrics:
     per_class: dict[str, ClassMetrics] = field(default_factory=dict)
     confusion_matrix: dict[str, dict[str, int]] = field(default_factory=dict)
     transitions: dict[tuple[str, str], int] = field(default_factory=dict)
+    schema_invalid: int = 0
+    schema_valid_rate: float = 0.0
+    pipeline_success_rate: float = 0.0
 
 
 def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
@@ -69,11 +72,13 @@ def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
     evaluated_pairs: list[tuple[str, str]] = []
     skipped = 0
     errors = 0
+    schema_invalid = 0
 
     for index, row in enumerate(rows, start=2):
         gold_class = row.get("gold_class", "")
         predicted_class = row.get("predicted_class", "")
         error = row.get("error", "")
+        error_type = row.get("error_type", "")
 
         if not gold_class.strip():
             skipped += 1
@@ -85,6 +90,8 @@ def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
                 skipped += 1
             else:
                 errors += 1
+                if error_type == "ValidationError":
+                    schema_invalid += 1
             continue
 
         if not predicted_class.strip():
@@ -101,6 +108,7 @@ def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
 
     correct = sum(1 for gold, predicted in evaluated_pairs if gold == predicted)
     evaluated = len(evaluated_pairs)
+    processed = len(rows) - skipped
     incorrect = evaluated - correct
     accuracy = _safe_divide(correct, evaluated)
     confusion_matrix = _build_confusion_matrix(evaluated_pairs)
@@ -116,6 +124,9 @@ def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
         per_class=_build_per_class_metrics(confusion_matrix),
         confusion_matrix=confusion_matrix,
         transitions=_build_transitions(evaluated_pairs),
+        schema_invalid=schema_invalid,
+        schema_valid_rate=_safe_divide(processed - schema_invalid, processed),
+        pipeline_success_rate=_safe_divide(processed - errors, processed),
     )
 
 
@@ -218,6 +229,9 @@ def format_metrics(metrics: BenchmarkMetrics) -> str:
         f"  correct: {metrics.correct}",
         f"  incorrect: {metrics.incorrect}",
         f"  accuracy: {_format_float(metrics.accuracy)}",
+        f"  schema_invalid: {metrics.schema_invalid}",
+        f"  schema_valid_rate: {_format_float(metrics.schema_valid_rate)}",
+        f"  pipeline_success_rate: {_format_float(metrics.pipeline_success_rate)}",
         "",
         "Per-class metrics:",
         _format_table(

@@ -360,6 +360,8 @@ class AssessmentStage(
                 raw_response=result.raw_response,
                 recovered_errors=list(result.recovered_errors),
                 provider_metadata=dict(result.provider_metadata),
+                latency_seconds=result.latency_seconds,
+                token_usage=result.token_usage
             ),
         )
 

@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.llm.runner import LLMTokenUsage
 
 class MVPPlan(BaseModel):
     """[СТРУКТУРА ДАННЫХ] Это класс-чертеж для хранения информации. Он следит, чтобы данные не перепутались: Pydantic проверяет поля, типы и обязательные значения перед передачей между роботами конвейера."""
@@ -60,6 +61,8 @@ class MVPPlanningTechnicalInfo(BaseModel):
     skipped_reason: str | None = None
     raw_response: dict[str, Any] | None = None
     recovered_errors: list[str] = Field(default_factory=list)
+    latency_seconds: float | None = None
+    token_usage: LLMTokenUsage | None = None
 
     model_config = ConfigDict(extra="forbid")
 

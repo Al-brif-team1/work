@@ -118,6 +118,8 @@ class Extractor(BaseLLMStage[BriefInput, ExtractedBrief, ExtractionResult]):
                 model_name=result.model_name,
                 raw_response=result.raw_response,
                 recovered_errors=list(result.recovered_errors),
+                latency_seconds=result.latency_seconds,
+                token_usage=result.token_usage,
             ),
         )
 

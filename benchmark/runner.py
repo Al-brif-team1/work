@@ -15,7 +15,7 @@ from app.schemas import BriefAnalysisResult, DecisionStatus
 
 
 REQUIRED_COLUMNS = frozenset({"id", "brief", "gold_class"})
-OUTPUT_COLUMNS = ("id", "gold_class", "predicted_class", "correct", "error")
+OUTPUT_COLUMNS = ("id", "gold_class", "predicted_class", "correct", "error", "error_type")
 SKIPPED_EMPTY_GOLD_CLASS = "skipped_empty_gold_class"
 PUBLIC_RECOMMENDATIONS = frozenset(
     {
@@ -144,6 +144,7 @@ def _run_row(
                 "predicted_class": "",
                 "correct": "",
                 "error": SKIPPED_EMPTY_GOLD_CLASS,
+                "error_type": "",
             },
             False,
             True,
@@ -154,9 +155,11 @@ def _run_row(
         result = pipeline.analyze_text(brief)
         predicted_class = result.assessment.recommendation
         error = ""
+        error_type = ""
     except Exception as exc:
         predicted_class = ""
         error = f"{exc.__class__.__name__}: {exc}"
+        error_type = exc.__class__.__name__
 
     return (
         {
@@ -165,6 +168,7 @@ def _run_row(
             "predicted_class": predicted_class,
             "correct": _format_correct(gold_class, predicted_class),
             "error": error,
+            "error_type": error_type,
         },
         True,
         False,

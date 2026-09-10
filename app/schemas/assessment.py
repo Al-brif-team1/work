@@ -11,6 +11,7 @@ from app.schemas.evaluation import CriterionEvaluation
 from app.schemas.risk import Risk
 from app.schemas.traffic_light import TrafficLightResult
 
+from app.llm.runner import LLMTokenUsage
 
 class AssessmentRecommendation(str, Enum):
     """Класс «AssessmentRecommendation» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
@@ -55,6 +56,8 @@ class AssessmentTechnicalInfo(BaseModel):
     raw_response: dict[str, Any] | None = None
     recovered_errors: list[str] = Field(default_factory=list)
     provider_metadata: dict[str, Any] = Field(default_factory=dict)
+    latency_seconds: float | None = None
+    token_usage: LLMTokenUsage | None = None
 
     model_config = ConfigDict(extra="forbid")
 
