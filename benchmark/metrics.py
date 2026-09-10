@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import statistics
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,9 +55,17 @@ class BenchmarkMetrics:
     correct: int
     incorrect: int
     accuracy: float
+    f1_macro: float
+    error_rate: float
     per_class: dict[str, ClassMetrics] = field(default_factory=dict)
     confusion_matrix: dict[str, dict[str, int]] = field(default_factory=dict)
     transitions: dict[tuple[str, str], int] = field(default_factory=dict)
+    # Стоимость прогона. None означает, что в CSV нет соответствующих колонок:
+    # предсказания могли быть получены раннером до того, как он начал их писать.
+    latency_mean: float | None = None
+    latency_median: float | None = None
+    total_tokens_mean: float | None = None
+    llm_calls_mean: float | None = None
 
 
 def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
@@ -104,6 +113,7 @@ def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
     incorrect = evaluated - correct
     accuracy = _safe_divide(correct, evaluated)
     confusion_matrix = _build_confusion_matrix(evaluated_pairs)
+    per_class = _build_per_class_metrics(confusion_matrix)
 
     return BenchmarkMetrics(
         total_rows=len(rows),
@@ -113,9 +123,18 @@ def compute_metrics(results_csv: Path) -> BenchmarkMetrics:
         correct=correct,
         incorrect=incorrect,
         accuracy=accuracy,
-        per_class=_build_per_class_metrics(confusion_matrix),
+        f1_macro=_build_f1_macro(per_class, confusion_matrix),
+        # Упавшие строки выпадают из accuracy и f1_macro, поэтому долю отказов
+        # надо видеть рядом: иначе метрика по уцелевшей подвыборке выглядит
+        # лучше, чем система работает на самом деле.
+        error_rate=_safe_divide(errors, evaluated + errors),
+        per_class=per_class,
         confusion_matrix=confusion_matrix,
         transitions=_build_transitions(evaluated_pairs),
+        latency_mean=_mean(_column_values(rows, "latency_seconds")),
+        latency_median=_median(_column_values(rows, "latency_seconds")),
+        total_tokens_mean=_mean(_column_values(rows, "total_tokens")),
+        llm_calls_mean=_mean(_column_values(rows, "llm_calls")),
     )
 
 
@@ -188,6 +207,53 @@ def _build_per_class_metrics(
     return metrics
 
 
+def _build_f1_macro(
+    per_class: dict[str, ClassMetrics],
+    matrix: dict[str, dict[str, int]],
+) -> float:
+    """Average per-class F1 over the classes the run actually touched.
+
+    Усредняем по классам, которые есть в разметке или хотя бы раз предсказаны.
+    Класс, которого нет ни там, ни там, дал бы честный ноль и занизил метрику
+    просто потому, что его не было в срезе.
+    """
+    scored = [
+        class_metrics.f1
+        for class_name, class_metrics in per_class.items()
+        if class_metrics.support > 0
+        or any(matrix[gold][class_name] for gold in CLASS_ORDER)
+    ]
+    if not scored:
+        return 0.0
+    return statistics.fmean(scored)
+
+
+def _column_values(rows: Sequence[dict[str, str]], column: str) -> list[float]:
+    """Read a numeric benchmark column, skipping rows that have no value.
+
+    Пустая ячейка это не ноль: так помечены пропущенные строки и прогоны, где
+    провайдер не сообщил расход токенов.
+    """
+    values: list[float] = []
+    for row in rows:
+        raw = (row.get(column) or "").strip()
+        if not raw:
+            continue
+        try:
+            values.append(float(raw))
+        except ValueError:
+            continue
+    return values
+
+
+def _mean(values: Sequence[float]) -> float | None:
+    return statistics.fmean(values) if values else None
+
+
+def _median(values: Sequence[float]) -> float | None:
+    return statistics.median(values) if values else None
+
+
 def _build_transitions(
     pairs: Sequence[tuple[str, str]],
 ) -> dict[tuple[str, str], int]:
@@ -218,6 +284,9 @@ def format_metrics(metrics: BenchmarkMetrics) -> str:
         f"  correct: {metrics.correct}",
         f"  incorrect: {metrics.incorrect}",
         f"  accuracy: {_format_float(metrics.accuracy)}",
+        f"  f1_macro: {_format_float(metrics.f1_macro)}",
+        f"  error_rate: {_format_float(metrics.error_rate)}",
+        *_format_cost(metrics),
         "",
         "Per-class metrics:",
         _format_table(
@@ -247,6 +316,24 @@ def format_metrics(metrics: BenchmarkMetrics) -> str:
     else:
         lines.append("  none")
     return "\n".join(lines)
+
+
+def _format_cost(metrics: BenchmarkMetrics) -> list[str]:
+    """Render run cost lines, omitting whatever the results CSV does not carry."""
+    lines = []
+    if metrics.latency_mean is not None:
+        lines.append(f"  latency_mean_seconds: {_format_float(metrics.latency_mean)}")
+    if metrics.latency_median is not None:
+        lines.append(
+            f"  latency_median_seconds: {_format_float(metrics.latency_median)}"
+        )
+    if metrics.llm_calls_mean is not None:
+        lines.append(f"  llm_calls_per_brief: {_format_float(metrics.llm_calls_mean)}")
+    if metrics.total_tokens_mean is not None:
+        lines.append(
+            f"  total_tokens_per_brief: {_format_float(metrics.total_tokens_mean)}"
+        )
+    return lines
 
 
 def _format_confusion_matrix(matrix: dict[str, dict[str, int]]) -> str:

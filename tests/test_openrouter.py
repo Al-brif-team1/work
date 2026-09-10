@@ -85,6 +85,47 @@ class TestOpenRouterLLMClient(unittest.TestCase):
             "length",
         )
 
+    def test_usage_observer_receives_provider_response_metadata(self) -> None:
+        seen: list[dict] = []
+        client = self._client_with_observer('{"ok": true}', seen.append)
+
+        payload = client.generate_json([{"role": "user", "content": "hello"}])
+
+        self.assertEqual(payload, {"ok": True})
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0]["usage"]["total_tokens"], 3)
+        self.assertEqual(seen[0]["finish_reason"], "stop")
+
+    def test_broken_usage_observer_does_not_break_the_request(self) -> None:
+        def explode(metadata: dict) -> None:
+            raise RuntimeError("observer is broken")
+
+        client = self._client_with_observer('{"ok": true}', explode)
+
+        # Наблюдатель нужен только замерам, поэтому его поломка не должна стоить
+        # прогону ни одного брифа.
+        with self.assertLogs("app.llm.openrouter", level="ERROR"):
+            payload = client.generate_json([{"role": "user", "content": "hello"}])
+
+        self.assertEqual(payload, {"ok": True})
+
+    def _client_with_observer(self, content: str, observer) -> OpenRouterLLMClient:
+        client = object.__new__(OpenRouterLLMClient)
+        client._model = "test-model"
+        client._generation_defaults = {}
+        client._usage_observer = observer
+        client._client = SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(
+                    create=lambda **kwargs: self._response(
+                        content,
+                        finish_reason="stop",
+                    )
+                )
+            )
+        )
+        return client
+
     @staticmethod
     def _response(content: str, *, finish_reason: str) -> SimpleNamespace:
         return SimpleNamespace(

@@ -1,8 +1,14 @@
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 Message = Mapping[str, str]
+
+# Наблюдатель за ответами провайдера. Клиент зовет его после каждого успешного
+# запроса и передает метаданные ответа, включая usage с числом токенов. Нужен
+# замерам: сам вызов возвращает только полезную нагрузку, а расход токенов иначе
+# нигде не сохраняется.
+UsageObserver = Callable[[Mapping[str, Any]], None]
 
 
 class LLMProviderError(RuntimeError):

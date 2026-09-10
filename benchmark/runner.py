@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, Sequence
@@ -12,10 +13,22 @@ from app.config import Config
 from app.llm.factory import LLMClientFactory
 from app.pipeline import BriefAnalysisPipeline
 from app.schemas import BriefAnalysisResult, DecisionStatus
+from benchmark.telemetry import UsageCollector, UsageSnapshot
 
 
 REQUIRED_COLUMNS = frozenset({"id", "brief", "gold_class"})
-OUTPUT_COLUMNS = ("id", "gold_class", "predicted_class", "correct", "error")
+OUTPUT_COLUMNS = (
+    "id",
+    "gold_class",
+    "predicted_class",
+    "correct",
+    "error",
+    "latency_seconds",
+    "llm_calls",
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+)
 SKIPPED_EMPTY_GOLD_CLASS = "skipped_empty_gold_class"
 PUBLIC_RECOMMENDATIONS = frozenset(
     {
@@ -46,10 +59,13 @@ class BriefPipeline(Protocol):
         """Analyze one normalized text brief and return the public result."""
 
 
-def build_production_pipeline() -> BriefAnalysisPipeline:
+def build_production_pipeline(
+    *,
+    usage_collector: UsageCollector | None = None,
+) -> BriefAnalysisPipeline:
     """Build the same production pipeline used by the application CLI."""
     settings = Config.load()
-    llm_client = LLMClientFactory.create(settings)
+    llm_client = LLMClientFactory.create(settings, usage_observer=usage_collector)
     return BriefAnalysisPipeline.from_llm_client(llm_client, settings=settings)
 
 
@@ -59,6 +75,7 @@ def run_benchmark(
     output_csv: Path,
     pipeline: BriefPipeline,
     limit: int | None = None,
+    usage_collector: UsageCollector | None = None,
 ) -> BenchmarkRunStats:
     """Run benchmark rows through the production pipeline and write predictions."""
     if limit is not None and limit < 0:
@@ -86,6 +103,7 @@ def run_benchmark(
                 result_row, was_processed, was_skipped, had_error = _run_row(
                     row,
                     pipeline,
+                    usage_collector,
                 )
                 writer.writerow(result_row)
                 output_file.flush()
@@ -131,6 +149,7 @@ def _validate_gold_classes(rows: Sequence[dict[str, str]]) -> None:
 def _run_row(
     row: dict[str, str],
     pipeline: BriefPipeline,
+    usage_collector: UsageCollector | None = None,
 ) -> tuple[dict[str, str], bool, bool, bool]:
     case_id = row.get("id", "")
     gold_class = row.get("gold_class", "")
@@ -150,6 +169,10 @@ def _run_row(
             False,
         )
 
+    if usage_collector is not None:
+        usage_collector.reset()
+
+    started_at = time.perf_counter()
     try:
         result = pipeline.analyze_text(brief)
         predicted_class = result.assessment.recommendation
@@ -157,19 +180,28 @@ def _run_row(
     except Exception as exc:
         predicted_class = ""
         error = f"{exc.__class__.__name__}: {exc}"
+    # Время пишем и для упавших строк: отвалившийся по таймауту бриф стоил
+    # столько же, сколько успешный, и это должно быть видно.
+    latency_seconds = time.perf_counter() - started_at
 
-    return (
-        {
-            "id": case_id,
-            "gold_class": gold_class,
-            "predicted_class": predicted_class,
-            "correct": _format_correct(gold_class, predicted_class),
-            "error": error,
-        },
-        True,
-        False,
-        bool(error),
-    )
+    result_row = {
+        "id": case_id,
+        "gold_class": gold_class,
+        "predicted_class": predicted_class,
+        "correct": _format_correct(gold_class, predicted_class),
+        "error": error,
+        "latency_seconds": f"{latency_seconds:.3f}",
+    }
+    if usage_collector is not None:
+        usage = usage_collector.snapshot()
+        result_row.update(
+            llm_calls=usage.llm_calls,
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            total_tokens=usage.total_tokens,
+        )
+
+    return result_row, True, False, bool(error)
 
 
 def _format_correct(gold_class: str, predicted_class: str) -> str:
@@ -214,18 +246,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     try:
-        pipeline = build_production_pipeline()
+        usage_collector = UsageCollector()
+        pipeline = build_production_pipeline(usage_collector=usage_collector)
         stats = run_benchmark(
             input_csv=args.input_csv,
             output_csv=args.output_csv,
             pipeline=pipeline,
             limit=args.limit,
+            usage_collector=usage_collector,
         )
     except BenchmarkRunnerError as exc:
         parser.error(str(exc))
         return 2
 
     print(
+        f"model={Config.load().llm_model} "
         f"total={stats.total} "
         f"processed={stats.processed} "
         f"skipped={stats.skipped} "

@@ -12,6 +12,7 @@ from benchmark.runner import (
     BenchmarkRunnerError,
     run_benchmark,
 )
+from benchmark.telemetry import UsageCollector
 
 
 class FakeAssessment:
@@ -77,17 +78,26 @@ class TestBenchmarkRunner(unittest.TestCase):
             self.assertEqual(stats.skipped, 0)
             self.assertEqual(stats.errors, 0)
             self.assertEqual(pipeline.briefs, ["Нужно сделать сайт."])
+            rows = self._read_output(output_path)
+            self.assertEqual(len(rows), 1)
+            row = rows[0]
+            # Замер времени зависит от машины, поэтому проверяем его отдельно
+            # от предсказания, а не сравнением целой строки.
+            self.assertGreaterEqual(float(row.pop("latency_seconds")), 0.0)
             self.assertEqual(
-                self._read_output(output_path),
-                [
-                    {
-                        "id": "1",
-                        "gold_class": "ACCEPT",
-                        "predicted_class": "accept",
-                        "correct": "true",
-                        "error": "",
-                    }
-                ],
+                row,
+                {
+                    "id": "1",
+                    "gold_class": "ACCEPT",
+                    "predicted_class": "accept",
+                    "correct": "true",
+                    "error": "",
+                    # Прогон без сборщика расхода: колонки токенов остаются пустыми.
+                    "llm_calls": "",
+                    "prompt_tokens": "",
+                    "completion_tokens": "",
+                    "total_tokens": "",
+                },
             )
 
     def test_row_error_is_recorded_and_next_row_continues(self) -> None:
@@ -234,6 +244,76 @@ class TestBenchmarkRunner(unittest.TestCase):
                 )
 
             self.assertEqual(pipeline.briefs, [])
+
+    def test_usage_is_written_per_row_and_does_not_accumulate(self) -> None:
+        collector = UsageCollector()
+
+        class UsageReportingPipeline:
+            """Pipeline that reports two LLM calls per brief, like the real one."""
+
+            def analyze_text(self, text: str) -> FakeResult:
+                collector({"usage": {"prompt_tokens": 10, "completion_tokens": 5}})
+                collector({"usage": {"prompt_tokens": 20, "completion_tokens": 7}})
+                return FakeResult("accept")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "benchmark.csv"
+            output_path = Path(tmpdir) / "predictions.csv"
+            self._write_input(
+                input_path,
+                [
+                    {"id": "1", "brief": "первый", "gold_class": "ACCEPT"},
+                    {"id": "2", "brief": "второй", "gold_class": "ACCEPT"},
+                ],
+                fieldnames=("id", "brief", "gold_class"),
+            )
+
+            run_benchmark(
+                input_csv=input_path,
+                output_csv=output_path,
+                pipeline=UsageReportingPipeline(),
+                usage_collector=collector,
+            )
+
+            rows = self._read_output(output_path)
+            # Вторая строка должна стоить столько же, сколько первая: если
+            # сборщик не обнулять, расход поедет вверх от брифа к брифу.
+            for row in rows:
+                self.assertEqual(row["llm_calls"], "2")
+                self.assertEqual(row["prompt_tokens"], "30")
+                self.assertEqual(row["completion_tokens"], "12")
+                self.assertEqual(row["total_tokens"], "42")
+
+    def test_usage_stays_empty_when_provider_reports_no_tokens(self) -> None:
+        collector = UsageCollector()
+
+        class SilentPipeline:
+            def analyze_text(self, text: str) -> FakeResult:
+                collector({"finish_reason": "stop"})
+                return FakeResult("accept")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "benchmark.csv"
+            output_path = Path(tmpdir) / "predictions.csv"
+            self._write_input(
+                input_path,
+                [{"id": "1", "brief": "бриф", "gold_class": "ACCEPT"}],
+                fieldnames=("id", "brief", "gold_class"),
+            )
+
+            run_benchmark(
+                input_csv=input_path,
+                output_csv=output_path,
+                pipeline=SilentPipeline(),
+                usage_collector=collector,
+            )
+
+            row = self._read_output(output_path)[0]
+            # Вызов состоялся, но провайдер промолчал про токены. Ноль здесь
+            # соврал бы, что запрос ничего не стоил.
+            self.assertEqual(row["llm_calls"], "1")
+            self.assertEqual(row["prompt_tokens"], "")
+            self.assertEqual(row["total_tokens"], "")
 
     @staticmethod
     def _write_input(

@@ -11,6 +11,7 @@ from app.llm.client import (
     LLMProviderError,
     LLMStructuredOutputError,
     Message,
+    UsageObserver,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,9 +23,14 @@ _NON_RETRYABLE_STATUS_CODES = {400, 401, 402, 403, 404, 422}
 class OpenRouterLLMClient(LLMClient):
     """Класс «OpenRouterLLMClient» хранит связанную логику проекта. Он нужен, чтобы сгруппировать данные и действия в понятный блок."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        usage_observer: UsageObserver | None = None,
+    ) -> None:
         """Подготавливает объект к работе: принимает зависимости, настройки и шаблоны, чтобы при запуске этап знал, чем пользоваться."""
         self._model = settings.llm_model
+        self._usage_observer = usage_observer
         # Параметры генерации нельзя задать в конструкторе OpenAI: он принимает только
         # транспортные настройки. Поэтому держим их здесь и подмешиваем в каждый запрос.
         self._generation_defaults = self._build_generation_defaults(settings)
@@ -67,7 +73,7 @@ class OpenRouterLLMClient(LLMClient):
         **kwargs: Any,
     ) -> Any:
         try:
-            return self._client.chat.completions.create(
+            response = self._client.chat.completions.create(
                 model=self._model,
                 messages=list(messages),
                 **self._merge_generation_kwargs(kwargs),
@@ -94,6 +100,21 @@ class OpenRouterLLMClient(LLMClient):
                 error_code=error_code,
                 retryable=retryable,
             ) from exc
+
+        self._notify_usage(response)
+        return response
+
+    def _notify_usage(self, response: Any) -> None:
+        """Отдает наблюдателю метаданные ответа. Наблюдатель нужен только для замеров, поэтому его поломка не должна ронять сам запрос."""
+        if self._usage_observer is None:
+            return
+
+        choices = getattr(response, "choices", None)
+        choice = choices[0] if choices else None
+        try:
+            self._usage_observer(self._extract_response_metadata(response, choice))
+        except Exception:
+            logger.exception("LLM usage observer failed")
 
     def generate_json(
         self,
